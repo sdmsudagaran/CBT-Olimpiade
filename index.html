@@ -39,8 +39,8 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -59,22 +59,39 @@
             main { padding: 0 !important; overflow: visible !important; display: block !important; }
             .print-container { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
         }
+        .modal-overlay { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
         .prevent-select { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
-        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const manifestJSON = {
-                "name": "Kelas Olimpiade", "short_name": "Olimpiade", "start_url": window.location.href,
-                "display": "fullscreen", "background_color": "#F8FAFC", "theme_color": "#0F4C81",
-                "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/3135/3135692.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]
+                "name": "Kelas Olimpiade",
+                "short_name": "Olimpiade",
+                "start_url": window.location.href,
+                "display": "fullscreen",
+                "background_color": "#F8FAFC",
+                "theme_color": "#0F4C81",
+                "icons": [{
+                    "src": "https://cdn-icons-png.flaticon.com/512/3135/3135692.png", 
+                    "sizes": "512x512", "type": "image/png", "purpose": "any maskable"
+                }]
             };
             const manifestBlob = new Blob([JSON.stringify(manifestJSON)], {type: 'application/json'});
             const manifestLink = document.createElement('link');
-            manifestLink.rel = 'manifest'; manifestLink.href = URL.createObjectURL(manifestBlob);
+            manifestLink.rel = 'manifest';
+            manifestLink.href = URL.createObjectURL(manifestBlob);
             document.head.appendChild(manifestLink);
+
+            const swCode = `
+                self.addEventListener('install', (e) => self.skipWaiting());
+                self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
+                self.addEventListener('fetch', (e) => {});
+            `;
+            const swBlob = new Blob([swCode], {type: 'application/javascript'});
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+            }
         });
     </script>
 </head>
@@ -82,13 +99,11 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useRef, createContext, useContext } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
 
         const SUPABASE_URL = 'https://cpvoofbnbnmtyprrrsfa.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_IglPnaLKr8BckXp91iPkIw_hvJzXgSv';
         let supabase = null;
-
-        const DialogContext = createContext();
 
         const Monitor = ({size=24, className=""}) => <i className={`fas fa-desktop ${className}`} style={{fontSize: size}}></i>;
         const Key = ({size=14, className=""}) => <i className={`fas fa-key ${className}`} style={{fontSize: size}}></i>;
@@ -105,6 +120,7 @@
         const CheckSquare = ({size=24, className=""}) => <i className={`fas fa-check-square ${className}`} style={{fontSize: size}}></i>;
         const BarChart2 = ({size=24, className=""}) => <i className={`fas fa-chart-bar ${className}`} style={{fontSize: size}}></i>;
         const Printer = ({size=24, className=""}) => <i className={`fas fa-print ${className}`} style={{fontSize: size}}></i>;
+        const Save = ({size=24, className=""}) => <i className={`fas fa-save ${className}`} style={{fontSize: size}}></i>;
         const X = ({size=24, className=""}) => <i className={`fas fa-times ${className}`} style={{fontSize: size}}></i>;
         const Edit = ({size=24, className=""}) => <i className={`fas fa-edit ${className}`} style={{fontSize: size}}></i>;
         const Trash2 = ({size=24, className=""}) => <i className={`fas fa-trash-alt ${className}`} style={{fontSize: size}}></i>;
@@ -113,31 +129,61 @@
         const ChevronLeft = ({size=24, className=""}) => <i className={`fas fa-chevron-left ${className}`} style={{fontSize: size}}></i>;
         const Menu = ({size=24, className=""}) => <i className={`fas fa-bars ${className}`} style={{fontSize: size}}></i>;
         const Calculator = ({size=24, className=""}) => <i className={`fas fa-calculator ${className}`} style={{fontSize: size}}></i>;
+        const Upload = ({size=24, className=""}) => <i className={`fas fa-upload ${className}`} style={{fontSize: size}}></i>;
+        const FolderIcon = ({size=24, className=""}) => <i className={`fas fa-folder ${className}`} style={{fontSize: size}}></i>;
 
         const getSupabase = async () => {
             if (supabase) return supabase;
-            
-            try {
-                const module = await new Function("return import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm')")();
-                supabase = module.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                return supabase;
-            } catch (e) {
-                console.warn("ESM import fallback gagal:", e);
-            }
-
             if (window.supabase) { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return supabase; }
             
-            let retries = 50;
+            let retries = 25;
             while (!window.supabase && retries > 0) { await new Promise(resolve => setTimeout(resolve, 100)); retries--; }
             if (window.supabase) { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return supabase; }
             
-            throw new Error("Gagal memuat pustaka database. Jika Anda menggunakan ekstensi AdBlocker, coba matikan sementara.");
+            // Multi-CDN Fallback jika CDN utama gagal atau diblokir AdBlocker
+            const cdnList = [
+                'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/supabase.umd.min.js'
+            ];
+
+            for (const cdnUrl of cdnList) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = cdnUrl;
+                        script.crossOrigin = 'anonymous';
+                        script.onload = () => {
+                            if (window.supabase) resolve();
+                            else reject(new Error("Supabase object not found"));
+                        };
+                        script.onerror = () => reject(new Error(`Gagal memuat ${cdnUrl}`));
+                        document.head.appendChild(script);
+                    });
+                    
+                    if (window.supabase) {
+                        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                        return supabase;
+                    }
+                } catch (e) {
+                    console.warn(`Fallback CDN Gagal: ${e.message}. Mencoba jalur lain...`);
+                }
+            }
+
+            // Jika semua gagal, gunakan ES Modules (ESM)
+            try {
+                const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+                supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                return supabase;
+            } catch (e) {
+                console.warn(`ESM import failed: ${e.message}`);
+            }
+
+            throw new Error("Gagal memuat database. Periksa koneksi internet Anda atau matikan AdBlocker/Ekstensi privasi.");
         };
 
         const RichTextEditor = ({ value, onChange, placeholder, minHeight="120px" }) => {
             const editorRef = useRef(null);
             const fileInputRef = useRef(null);
-            const { showPrompt } = useContext(DialogContext);
 
             useEffect(() => {
                 if (editorRef.current && value !== editorRef.current.innerHTML) editorRef.current.innerHTML = value || '';
@@ -172,7 +218,7 @@
             };
 
             return (
-                <div className="border border-slate-300 rounded-lg overflow-hidden bg-white focus-within:border-primary focus-within:ring-1 transition-all">
+                <div className="border border-slate-300 rounded-lg overflow-hidden bg-white focus-within:border-primary focus-within:ring-1 transition-all shadow-sm">
                     <div className="bg-slate-50 border-b border-slate-200 p-1.5 flex flex-wrap gap-1 items-center">
                         <button onMouseDown={(e)=>execCmd('bold', e)} type="button" className="w-8 h-8 font-bold text-slate-700 hover:bg-slate-200 rounded">B</button>
                         <button onMouseDown={(e)=>execCmd('italic', e)} type="button" className="w-8 h-8 italic text-slate-700 hover:bg-slate-200 rounded">I</button>
@@ -184,8 +230,7 @@
                         <div className="w-px h-5 bg-slate-300 mx-1"></div>
                         <button onMouseDown={(e)=>{ if(e) e.preventDefault(); fileInputRef.current.click();}} type="button" className="h-8 px-2.5 text-slate-700 hover:bg-slate-200 rounded flex items-center text-xs font-semibold"><ImageIcon size={14} className="mr-1 text-success"/> Gambar</button>
                         <div className="w-px h-5 bg-slate-300 mx-1"></div>
-                        <button onMouseDown={async (e)=>{if(e) e.preventDefault(); const f = await showPrompt("Ketik manual kode LaTeX:"); if(f) insertMath(f);}} type="button" className="h-8 px-2 text-slate-700 hover:bg-slate-200 rounded flex items-center text-xs font-semibold" title="Ketik Manual LaTeX"><Calculator size={14} className="mr-1 text-primary"/> Manual</button>
-                        <select onChange={(e) => { if(e.target.value) { insertMath(e.target.value); e.target.value = ''; } }} className="h-8 px-2 ml-1 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-primary outline-none cursor-pointer shadow-sm">
+                        <select onChange={(e) => { if(e.target.value) { insertMath(e.target.value); e.target.value = ''; } }} className="h-8 px-2 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-primary outline-none cursor-pointer shadow-sm">
                             <option value="">+ Rumus Cepat</option>
                             <option value="x^2">Kuadrat (x²)</option>
                             <option value="\sqrt{x}">Akar (√x)</option>
@@ -195,9 +240,10 @@
                             <option value="\times">Kali (×)</option>
                             <option value="\div">Bagi (÷)</option>
                         </select>
+                        <button onMouseDown={(e)=>{if(e) e.preventDefault(); const f = prompt("Ketik manual kode LaTeX:"); if(f) insertMath(f);}} type="button" className="h-8 px-2 ml-1 text-slate-700 hover:bg-slate-200 rounded flex items-center text-xs font-semibold"><Calculator size={14} className="mr-1 text-primary"/> Manual</button>
                         <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                     </div>
-                    <div ref={editorRef} contentEditable onInput={handleInput} onBlur={handleInput} className="p-3 outline-none rich-text-content editor-ignore-math text-slate-700 text-sm" style={{minHeight: minHeight}} placeholder={placeholder} />
+                    <div ref={editorRef} contentEditable onInput={handleInput} onBlur={handleInput} className="p-4 outline-none rich-text-content editor-ignore-math text-slate-700 text-sm" style={{minHeight: minHeight}} placeholder={placeholder} />
                 </div>
             );
         };
@@ -243,7 +289,7 @@
                 } else if (q.type === 'SHORT_ANSWER') {
                     if (userAnswer && String(userAnswer).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase()) isCorrect = true;
                 } else if (q.type === 'ESSAY') {
-                    isCorrect = false; // Auto score 0 for manual grading
+                    isCorrect = false; 
                 }
 
                 if (isCorrect) {
@@ -298,7 +344,7 @@
           const [results, setResults] = useState([]);
           const [questions, setQuestions] = useState([]);
           
-          const [activeFolder, setActiveFolder] = useState('Utama');
+          const [activeFolder, setActiveFolder] = useState('Utama'); // Berisi array folder yang diterbitkan (dipisahkan koma)
           const [organizerName, setOrganizerName] = useState('Sekolah Dasar');
           const [schoolLogo, setSchoolLogo] = useState('');
           const [examDate, setExamDate] = useState('');
@@ -308,46 +354,30 @@
           const [isRandomOpt, setIsRandomOpt] = useState(false);
 
           const [isLoadingData, setIsLoadingData] = useState(false);
-        const [dbStatus, setDbStatus] = useState('connecting');
-        const [dbErrorMsg, setDbErrorMsg] = useState('');
-        
-        const [activeSession, setActiveSession] = useStickySession(null, 'cbt_active_session');
+          const [dbStatus, setDbStatus] = useState('connecting');
+          const [initErrorMsg, setInitErrorMsg] = useState('');
+          
+          const [activeSession, setActiveSession] = useStickySession(null, 'cbt_active_session');
           const [isAdminLoggedIn, setIsAdminLoggedIn] = useStickySession(false, 'cbt_admin_auth');
-
-          // Dialog System State (Untuk mengganti alert/confirm bawaan browser)
-          const [dialogState, setDialogState] = useState(null); 
-
-          const showCustomAlert = useCallback((msg) => new Promise((resolve) => {
-              setDialogState({ type: 'alert', msg, resolve: () => { setDialogState(null); resolve(true); } });
-          }), []);
-
-          const showCustomConfirm = useCallback((msg) => new Promise((resolve) => {
-              setDialogState({ type: 'confirm', msg, resolve: (val) => { setDialogState(null); resolve(val); } });
-          }), []);
-
-          const showCustomPrompt = useCallback((msg, defaultValue = '') => new Promise((resolve) => {
-              setDialogState({ type: 'prompt', msg, defaultValue, resolve: (val) => { setDialogState(null); resolve(val); } });
-          }), []);
 
           const navigate = (path) => { window.scrollTo(0,0); setCurrentRoute(path); };
 
           const fetchSupabaseData = async () => {
-           setIsLoadingData(true);
-           setDbErrorMsg('');
-           try {
-              const db = await getSupabase();
-              const [qRes, tRes] = await Promise.all([
-                  db.from('questions').select('*'),
-                  db.from('tokens').select('*').order('generatedAt', { ascending: false })
-              ]);
-              
-              if (qRes.error) throw new Error("Tabel Soal: " + qRes.error.message);
-              if (tRes.error) throw new Error("Tabel Token: " + tRes.error.message);
-
-              if(qRes.data) setQuestions(qRes.data);
-              if(tRes.data) {
-                  setTokens(tRes.data);
-                  const findToken = (code) => tRes.data.find(t => t.code === code)?.status;
+             setIsLoadingData(true);
+             try {
+                const db = await getSupabase();
+                const [qRes, tRes] = await Promise.all([
+                    db.from('questions').select('*'),
+                    db.from('tokens').select('*').order('generatedAt', { ascending: false })
+                ]);
+                
+                if(qRes.error) throw qRes.error;
+                if(tRes.error) throw tRes.error;
+                
+                if(qRes.data) setQuestions(qRes.data);
+                if(tRes.data) {
+                    setTokens(tRes.data);
+                    const findToken = (code) => tRes.data.find(t => t.code === code)?.status;
                     setActiveFolder(findToken('SYS_SETTING_FOLDER') || 'Utama');
                     setOrganizerName(findToken('SYS_SETTING_ORGANIZER') || 'Kelas Olimpiade');
                     setSchoolLogo(findToken('SYS_SETTING_LOGO') || '');
@@ -359,34 +389,34 @@
                 }
 
                 if (isAdminLoggedIn) {
-                 const rRes = await db.from('results').select('*').order('created_at', { ascending: false });
-                 if (rRes.error) throw new Error("Tabel Hasil: " + rRes.error.message);
-                 if(rRes.data) {
-                    const formattedResults = rRes.data.map(r => ({
-                       id: r.id,
-                       participant: { name: r.participant_name, school: r.participant_school, nis: r.participant_nis, grade: r.participant_grade },
+                   const rRes = await db.from('results').select('*').order('created_at', { ascending: false });
+                   if(rRes.error) throw rRes.error;
+                   if(rRes.data) {
+                      const formattedResults = rRes.data.map(r => ({
+                         id: r.id,
+                         participant: { name: r.participant_name, school: r.participant_school, nis: r.participant_nis, grade: r.participant_grade },
                          token: r.token, score: r.score, startTime: parseInt(r.start_time), endTime: parseInt(r.end_time),
                          detail: typeof r.detailed_results === 'string' ? JSON.parse(r.detailed_results) : r.detailed_results, created_at: r.created_at
                       }));
                       setResults(formattedResults);
-                 }
-              }
-              setDbStatus('connected');
-           } catch (error) { 
-               console.error("Supabase Error:", error);
-               let errMsg = error.message || "Gagal terhubung ke server database.";
-               if (errMsg.toLowerCase().includes('fetch') || errMsg.toLowerCase().includes('network')) {
-                   errMsg = "Tidak bisa menghubungi server (Failed to fetch). Kemungkinan server Supabase Anda sedang 'Paused' (karena tidak aktif selama 7 hari). Silakan login ke dasbor Supabase Anda dan klik tombol 'Restore Project'.";
-               }
-               setDbErrorMsg(errMsg);
-               setDbStatus('error'); 
-           } 
-           finally { setIsLoadingData(false); }
-        };
+                   }
+                }
+                setDbStatus('connected');
+                setInitErrorMsg('');
+             } catch (error) { 
+                console.error("Supabase error", error);
+                setInitErrorMsg(error.message);
+                setDbStatus('error'); 
+             } 
+             finally { setIsLoadingData(false); }
+          };
 
-        useEffect(() => { fetchSupabaseData(); }, [isAdminLoggedIn]);
+          useEffect(() => { fetchSupabaseData(); }, [isAdminLoggedIn]);
 
-          const activeQuestions = isAdminLoggedIn ? questions : questions.filter(q => String(q.folder || 'Utama').trim().toLowerCase() === String(activeFolder || 'Utama').trim().toLowerCase());
+          const activeQuestions = isAdminLoggedIn ? questions : questions.filter(q => {
+              const activeFolders = (activeFolder || 'Utama').split(',').map(f => f.trim().toLowerCase());
+              return activeFolders.includes(String(q.folder || 'Utama').trim().toLowerCase());
+          });
 
           useEffect(() => {
             if (currentRoute === '/') {
@@ -427,7 +457,7 @@
 
                 setActiveSession({ 
                     token: tokenObj.code, 
-                    participant: { name: tokenObj.participant_name || 'Peserta', school: tokenObj.participant_school || organizerName, nis: '', grade: '' }, 
+                    participant: { name: tokenObj.participant_name || 'Peserta', school: tokenObj.participant_school || organizerName, jenis_soal: tokenObj.jenis_soal || '' }, 
                     answers: {}, flagged: [], status: 'SETUP' 
                 });
                 navigate('/instruction');
@@ -436,30 +466,29 @@
             };
 
             return (
-              <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-32 opacity-[0.03] pointer-events-none"><i className="fas fa-brain text-[400px]"></i></div>
-                <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border-t-[6px] border-primary z-10 animate-fade-in">
+              <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
+                <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border-t-[6px] border-primary">
                   <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
-                      {schoolLogo ? <img src={schoolLogo} alt="Logo" className="w-full h-full object-cover"/> : <i className="fas fa-graduation-cap text-3xl"></i>}
-                  </div>
-                  <h1 className="text-2xl font-black text-slate-800 tracking-tight">Kelas Olimpiade</h1>
-                  <p className="text-slate-500 font-medium mt-1">{organizerName}</p>
-                </div>
-
-                {dbErrorMsg && (
-                    <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-200 font-medium flex items-start animate-fade-in">
-                        <AlertCircle size={18} className="mr-2 mt-0.5 flex-shrink-0"/>
-                        <div><p className="font-bold mb-1">Koneksi Database Gagal</p><p>{dbErrorMsg}</p></div>
+                    <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+                        {schoolLogo ? <img src={schoolLogo} alt="Logo" className="w-full h-full object-cover"/> : <i className="fas fa-graduation-cap text-3xl"></i>}
                     </div>
-                )}
+                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">Kelas Olimpiade</h1>
+                    <p className="text-slate-500 font-medium mt-1">{organizerName}</p>
+                  </div>
 
-                <form onSubmit={handleLogin} className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Token Ujian</label>
+                  {initErrorMsg && (
+                      <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-200 font-medium flex items-start">
+                          <AlertCircle size={18} className="mr-2 mt-0.5 flex-shrink-0"/>
+                          <div><p className="font-bold mb-1">Gagal Terhubung ke Database</p><p>{initErrorMsg}</p></div>
+                      </div>
+                  )}
+
+                  <form onSubmit={handleLogin} className="space-y-5">
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">Token Ujian</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Key className="h-5 w-5 text-slate-400" /></div>
-                        <input type="text" className="block w-full pl-11 pr-4 py-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary uppercase font-bold text-slate-800 bg-slate-50 focus:bg-white transition-all outline-none" placeholder="Ketik Token..." value={inputToken} onChange={(e) => setInputToken(e.target.value.toUpperCase())} required/>
+                        <input type="text" className="block w-full pl-11 pr-4 py-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary uppercase font-bold text-slate-800 bg-slate-50 focus:bg-white transition-all" placeholder="Ketik Token..." value={inputToken} onChange={(e) => setInputToken(e.target.value.toUpperCase())} required/>
                       </div>
                       {error && <p className="mt-2 text-sm text-red-500 font-medium flex items-center"><AlertCircle size={14} className="mr-1.5"/> {error}</p>}
                     </div>
@@ -471,7 +500,7 @@
                      <span className={`text-xs font-bold px-3 py-1.5 rounded-md flex items-center ${dbStatus === 'connected' ? 'bg-success/10 text-success' : 'bg-red-50 text-red-600'}`}>
                          <Cloud size={14} className="mr-1.5"/> {dbStatus === 'connected' ? 'Sistem Aktif' : 'Offline'}
                      </span>
-                     <button onClick={() => navigate('/admin/login')} className="text-xs font-semibold text-slate-400 hover:text-slate-800 flex items-center transition-colors"><Settings size={14} className="mr-1"/> Admin</button>
+                     <button onClick={() => navigate('/admin/login')} className="text-xs font-semibold text-slate-400 hover:text-slate-800 flex items-center"><Settings size={14} className="mr-1"/> Admin</button>
                   </div>
                 </div>
               </div>
@@ -480,8 +509,6 @@
 
           const ParticipantInstruction = () => {
             const [isStarting, setIsStarting] = useState(false);
-            const { showAlert } = useContext(DialogContext);
-
             if (!activeSession || !activeSession.participant) { navigate('/login'); return null; }
             
             const startExam = async () => {
@@ -491,8 +518,11 @@
                 await db.from('tokens').update({ status: 'USED' }).eq('code', activeSession.token);
 
                 let sessionQuestions = JSON.parse(JSON.stringify(activeQuestions));
+                
+                // Acak Urutan Soal
                 if (isRandomQ) sessionQuestions.sort(() => Math.random() - 0.5);
                 
+                // Acak Urutan Opsi (PG)
                 if (isRandomOpt) {
                     sessionQuestions = sessionQuestions.map(q => {
                         if (q.type === 'MCQ' && q.options) {
@@ -508,7 +538,8 @@
                     });
                 }
 
-                let durationLimitMs = 120 * 60 * 1000;
+                // Kalkulasi Timer
+                let durationLimitMs = 120 * 60 * 1000; // Default 120 menit
                 if (examDate && endTimeStr) {
                     const endDateTime = new Date(`${examDate}T${endTimeStr}:00`).getTime();
                     durationLimitMs = Math.max(60000, endDateTime - new Date().getTime());
@@ -519,20 +550,17 @@
                     durationLimit: durationLimitMs, sessionQuestions, examCurrentIndex: 0 
                 }));
                 navigate('/exam');
-              } catch (err) { 
-                await showAlert("Gagal memulai ujian: " + err.message); 
-                setIsStarting(false); 
-              }
+              } catch (err) { alert("Gagal: " + err.message); setIsStarting(false); }
             };
 
             return (
-              <div className="min-h-screen bg-background py-10 px-4 flex justify-center items-center relative overflow-hidden">
-                 <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 border-t-[6px] border-secondary z-10 animate-fade-in">
+              <div className="min-h-screen bg-background py-10 px-4 flex justify-center items-center">
+                 <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 border-t-[6px] border-secondary">
                     <h2 className="text-2xl font-black text-slate-800 mb-6 border-b pb-4">Verifikasi Identitas</h2>
                     <div className="bg-primary/5 border border-primary/20 p-5 rounded-2xl mb-8 flex flex-col items-center text-center">
                        <User className="text-primary mb-3" size={40} />
                        <strong className="text-xl text-slate-800 block">{activeSession.participant.name}</strong>
-                       <span className="text-slate-500 font-medium">{activeSession.participant.school}</span>
+                       <span className="text-slate-500 font-medium">{activeSession.participant.school} {activeSession.participant.jenis_soal ? `| ${activeSession.participant.jenis_soal}` : ''}</span>
                     </div>
                     <ul className="space-y-4 text-slate-700 font-medium mb-8">
                          <li className="flex items-start"><CheckCircle className="text-success mr-3 mt-1 flex-shrink-0" size={18}/> Ujian terdiri dari <b>{activeQuestions.length} soal</b>.</li>
@@ -540,8 +568,8 @@
                          <li className="flex items-start text-primary bg-primary/5 p-4 rounded-xl border border-primary/10"><i className="fas fa-pen-nib mr-3 mt-0.5 flex-shrink-0"></i> Tersedia fitur <b>Kertas Coretan (Canvas)</b> untuk menghitung rumusan.</li>
                          <li className="flex items-start text-red-600 bg-red-50 p-4 rounded-xl border border-red-100"><AlertCircle className="mr-3 mt-0.5 flex-shrink-0" size={18}/> Dilarang membuka tab lain. Sistem mencatat pelanggaran.</li>
                     </ul>
-                    <button onClick={startExam} disabled={isStarting} className="w-full py-4 bg-success text-white font-black text-lg rounded-2xl shadow-lg hover:bg-success-600 transition-all disabled:opacity-50">
-                       {isStarting ? 'Memproses...' : 'Mulai Ujian Sekarang'}
+                    <button onClick={startExam} disabled={isStarting || activeQuestions.length === 0} className="w-full py-4 bg-success text-white font-black text-lg rounded-2xl shadow-lg hover:bg-success-600 transition-all disabled:opacity-50">
+                       {isStarting ? 'Memproses...' : (activeQuestions.length === 0 ? 'Soal Belum Tersedia' : 'Mulai Ujian Sekarang')}
                     </button>
                  </div>
               </div>
@@ -550,7 +578,6 @@
 
           const ExamEngine = () => {
             const [timeLeft, setTimeLeft] = useState(0);
-            const { showAlert } = useContext(DialogContext);
             
             // --- Fitur Canvas / Kertas Coretan ---
             const [canvasMode, setCanvasMode] = useState(false);
@@ -573,6 +600,7 @@
             const currentQuestion = examQuestions[examCurrentIndex];
             
             const changeQuestion = (idx) => {
+                // Simpan coretan sebelum pindah soal
                 if (canvasMode && canvasCtx && canvasRef.current) {
                     savedDrawings.current[currentQuestion.id] = canvasCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
                 }
@@ -581,6 +609,7 @@
             
             useEffect(() => { triggerMathRender(); }, [examCurrentIndex]);
 
+            // Setup Timer Waktu Mundur
             useEffect(() => {
               if (!activeSession || activeSession.status !== 'ACTIVE') return;
               const timer = setInterval(() => {
@@ -592,6 +621,7 @@
               return () => clearInterval(timer);
             }, [activeSession]);
 
+            // Inisialisasi Canvas saat mode coretan diaktifkan atau saat ganti soal
             useEffect(() => {
                 if (canvasMode && canvasRef.current && currentQuestion) {
                     const canvas = canvasRef.current;
@@ -603,6 +633,7 @@
                     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                     setCanvasCtx(ctx);
 
+                    // Restore coretan jika ada
                     const saved = savedDrawings.current[currentQuestion.id];
                     if (saved && saved.width === canvas.width && saved.height === canvas.height) {
                         ctx.putImageData(saved, 0, 0);
@@ -789,8 +820,6 @@
           const ExamReview = () => {
              const [isSubmitting, setIsSubmitting] = useState(false);
              const [showConfirm, setShowConfirm] = useState(false);
-             const { showAlert } = useContext(DialogContext);
-
              if (!activeSession || activeSession.status !== 'ACTIVE') { navigate('/'); return null; }
 
              const examQuestions = activeSession?.sessionQuestions || activeQuestions;
@@ -817,15 +846,12 @@
                  await db.from('results').insert([payload]);
                  setActiveSession({ ...activeSession, status: 'SUBMITTED', score: result.finalScore, submittedResult: { summary, detailedResults: finalDetailedResults } });
                  navigate('/dashboard');
-               } catch (err) { 
-                 await showAlert("Gagal mengirim ujian: " + err.message); 
-                 setIsSubmitting(false); setShowConfirm(false); 
-               }
+               } catch (err) { alert("Gagal mengirim ujian: " + err.message); setIsSubmitting(false); setShowConfirm(false); }
              };
 
              return (
                <div className="min-h-screen bg-background flex justify-center items-center p-4">
-                   <div className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl max-w-lg w-full text-center border-t-[8px] border-primary animate-fade-in">
+                   <div className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl max-w-lg w-full text-center border-t-[8px] border-primary">
                       <h2 className="text-2xl font-black mb-8 text-slate-800">Review Ujian</h2>
                       <div className="grid grid-cols-2 gap-4 mb-8">
                          <div className="p-6 bg-slate-50 rounded-2xl"><p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-2">Total Soal</p><p className="text-5xl font-black text-slate-800">{examQuestions.length}</p></div>
@@ -837,11 +863,11 @@
                             <button onClick={()=>setShowConfirm(true)} className="flex-1 py-4 bg-primary text-white rounded-xl font-black shadow-lg hover:bg-primary-700">Kirim Ujian</button>
                          </div>
                       ) : (
-                         <div className="p-6 bg-rose-50 rounded-2xl border border-rose-100 animate-fade-in">
+                         <div className="p-6 bg-rose-50 rounded-2xl border border-rose-100">
                             <p className="font-bold text-rose-600 mb-4">Anda yakin ingin mengumpulkan? Jawaban tidak bisa diubah lagi.</p>
                             <div className="flex gap-3">
-                               <button onClick={()=>setShowConfirm(false)} className="flex-1 py-3 bg-white border border-rose-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50">Batal</button>
-                               <button onClick={handleFinalSubmit} disabled={isSubmitting} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-black shadow-md disabled:opacity-50">{isSubmitting ? 'Mengirim...' : 'Ya, Kirim'}</button>
+                               <button onClick={()=>setShowConfirm(false)} className="flex-1 py-3 bg-white border border-rose-200 rounded-xl font-bold text-slate-600">Batal</button>
+                               <button onClick={handleFinalSubmit} disabled={isSubmitting} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-black shadow-md">{isSubmitting ? 'Mengirim...' : 'Ya, Kirim'}</button>
                             </div>
                          </div>
                       )}
@@ -881,7 +907,7 @@
 
               return (
                   <div className="min-h-screen bg-background p-4 sm:p-8">
-                      <div className="max-w-5xl mx-auto animate-fade-in">
+                      <div className="max-w-5xl mx-auto">
                           <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                               <div>
                                   <h1 className="text-2xl font-black text-primary">Dashboard Prestasi</h1>
@@ -918,21 +944,21 @@
                                       <div className="flex items-center">
                                           <div className="w-24 text-sm font-bold text-slate-500 uppercase tracking-wider">Mudah</div>
                                           <div className="flex-1 bg-slate-100 h-4 rounded-full overflow-hidden mx-4 shadow-inner">
-                                              <div className="bg-success h-full rounded-full transition-all duration-1000" style={{width: `${summary.masteryMudah || 0}%`}}></div>
+                                              <div className="bg-success h-full rounded-full" style={{width: `${summary.masteryMudah || 0}%`}}></div>
                                           </div>
                                           <div className="w-16 text-right font-black text-slate-700">{summary.correctMudah || 0} <span className="text-xs font-medium text-slate-400">/ {summary.totalMudah || 0}</span></div>
                                       </div>
                                       <div className="flex items-center">
                                           <div className="w-24 text-sm font-bold text-slate-500 uppercase tracking-wider">Sedang</div>
                                           <div className="flex-1 bg-slate-100 h-4 rounded-full overflow-hidden mx-4 shadow-inner">
-                                              <div className="bg-secondary h-full rounded-full transition-all duration-1000" style={{width: `${summary.masterySedang || 0}%`}}></div>
+                                              <div className="bg-secondary h-full rounded-full" style={{width: `${summary.masterySedang || 0}%`}}></div>
                                           </div>
                                           <div className="w-16 text-right font-black text-slate-700">{summary.correctSedang || 0} <span className="text-xs font-medium text-slate-400">/ {summary.totalSedang || 0}</span></div>
                                       </div>
                                       <div className="flex items-center">
                                           <div className="w-24 text-sm font-bold text-slate-500 uppercase tracking-wider">Sulit</div>
                                           <div className="flex-1 bg-slate-100 h-4 rounded-full overflow-hidden mx-4 shadow-inner">
-                                              <div className="bg-rose-500 h-full rounded-full transition-all duration-1000" style={{width: `${summary.masterySulit || 0}%`}}></div>
+                                              <div className="bg-rose-500 h-full rounded-full" style={{width: `${summary.masterySulit || 0}%`}}></div>
                                           </div>
                                           <div className="w-16 text-right font-black text-slate-700">{summary.correctSulit || 0} <span className="text-xs font-medium text-slate-400">/ {summary.totalSulit || 0}</span></div>
                                       </div>
@@ -943,19 +969,19 @@
                                   <h3 className="font-black text-slate-800 mb-6 text-lg">Grafik Penguasaan Tingkat Soal</h3>
                                   <div className="h-40 flex items-end justify-between gap-6 px-4">
                                       <div className="flex-1 flex flex-col items-center group">
-                                          <div className="w-full max-w-[60px] bg-success/20 hover:bg-success/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-success duration-1000" style={{height: `${summary.masteryMudah || 0}%`, minHeight: '15%'}}>
+                                          <div className="w-full max-w-[60px] bg-success/20 hover:bg-success/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-success" style={{height: `${summary.masteryMudah || 0}%`, minHeight: '15%'}}>
                                               <span className="absolute -top-7 text-xs font-black text-success bg-success/10 px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">{Math.round(summary.masteryMudah || 0)}%</span>
                                           </div>
                                           <div className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Mudah</div>
                                       </div>
                                       <div className="flex-1 flex flex-col items-center group">
-                                          <div className="w-full max-w-[60px] bg-secondary/20 hover:bg-secondary/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-secondary duration-1000" style={{height: `${summary.masterySedang || 0}%`, minHeight: '15%'}}>
+                                          <div className="w-full max-w-[60px] bg-secondary/20 hover:bg-secondary/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-secondary" style={{height: `${summary.masterySedang || 0}%`, minHeight: '15%'}}>
                                               <span className="absolute -top-7 text-xs font-black text-secondary bg-secondary/10 px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">{Math.round(summary.masterySedang || 0)}%</span>
                                           </div>
                                           <div className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sedang</div>
                                       </div>
                                       <div className="flex-1 flex flex-col items-center group">
-                                          <div className="w-full max-w-[60px] bg-rose-500/20 hover:bg-rose-500/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-rose-500 duration-1000" style={{height: `${summary.masterySulit || 0}%`, minHeight: '15%'}}>
+                                          <div className="w-full max-w-[60px] bg-rose-500/20 hover:bg-rose-500/40 transition-all rounded-t-xl relative flex justify-center border-t-4 border-rose-500" style={{height: `${summary.masterySulit || 0}%`, minHeight: '15%'}}>
                                               <span className="absolute -top-7 text-xs font-black text-rose-600 bg-rose-100 px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">{Math.round(summary.masterySulit || 0)}%</span>
                                           </div>
                                           <div className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sulit</div>
@@ -970,21 +996,9 @@
 
           const AdminLogin = () => {
             const [u, setU] = useState(''); const [p, setP] = useState('');
-            const { showAlert } = useContext(DialogContext);
-
-            const handleLogin = async (e) => {
-                e.preventDefault(); 
-                if(u==='admin' && p==='bismillah') {
-                    setIsAdminLoggedIn(true); 
-                    navigate('/admin/dashboard');
-                } else {
-                    await showAlert('Username atau Password Salah');
-                }
-            };
-
             return (
               <div className="min-h-screen bg-slate-900 flex justify-center items-center p-4">
-                <form onSubmit={handleLogin} className="bg-white p-10 rounded-3xl max-w-sm w-full shadow-2xl border-t-[8px] border-primary animate-fade-in">
+                <form onSubmit={(e)=>{e.preventDefault(); if(u==='admin'&&p==='bismillah'){setIsAdminLoggedIn(true); navigate('/admin/dashboard');}else alert('Salah');}} className="bg-white p-10 rounded-3xl max-w-sm w-full shadow-2xl border-t-[8px] border-primary">
                    <div className="text-center mb-8"><div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4"><Settings size={30}/></div><h1 className="text-2xl font-black text-slate-800 tracking-tight">Admin Area</h1></div>
                    <input type="text" placeholder="Username" value={u} onChange={e=>setU(e.target.value)} className="w-full p-4 border-2 border-slate-200 rounded-xl mb-4 font-bold text-slate-800 focus:border-primary outline-none transition-colors" required/>
                    <input type="password" placeholder="Password" value={p} onChange={e=>setP(e.target.value)} className="w-full p-4 border-2 border-slate-200 rounded-xl mb-8 font-bold text-slate-800 focus:border-primary outline-none transition-colors" required/>
@@ -1038,8 +1052,19 @@
              const [tempEndTime, setTempEndTime] = useState(endTimeStr);
              const [tempRandomQ, setTempRandomQ] = useState(isRandomQ);
              const [tempRandomOpt, setTempRandomOpt] = useState(isRandomOpt);
+             const [tempFolders, setTempFolders] = useState([]);
              const [isSaving, setIsSaving] = useState(false);
-             const { showAlert } = useContext(DialogContext);
+
+             useEffect(() => {
+                 if (activeFolder) setTempFolders(activeFolder.split(',').map(f => f.trim()));
+             }, [activeFolder]);
+
+             const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), 'Utama'])];
+
+             const toggleFolder = (f) => {
+                 if (tempFolders.includes(f)) setTempFolders(tempFolders.filter(x => x !== f));
+                 else setTempFolders([...tempFolders, f]);
+             };
 
              const handleLogoUpload = (e) => {
                  const file = e.target.files[0];
@@ -1066,7 +1091,8 @@
                         upsertSetting('SYS_SETTING_START_TIME', tempStartTime),
                         upsertSetting('SYS_SETTING_END_TIME', tempEndTime),
                         upsertSetting('SYS_SETTING_RANDOM_Q', tempRandomQ ? 'TRUE' : 'FALSE'),
-                        upsertSetting('SYS_SETTING_RANDOM_OPT', tempRandomOpt ? 'TRUE' : 'FALSE')
+                        upsertSetting('SYS_SETTING_RANDOM_OPT', tempRandomOpt ? 'TRUE' : 'FALSE'),
+                        upsertSetting('SYS_SETTING_FOLDER', tempFolders.join(', '))
                     ]);
                     
                     setOrganizerName(tempOrganizer); 
@@ -1076,11 +1102,10 @@
                     setEndTimeStr(tempEndTime);
                     setIsRandomQ(tempRandomQ); 
                     setIsRandomOpt(tempRandomOpt);
+                    setActiveFolder(tempFolders.join(', '));
                     
-                    await showAlert("Pengaturan berhasil disimpan!");
-                } catch(e) { 
-                    await showAlert("Gagal: " + e.message); 
-                }
+                    alert("Pengaturan berhasil disimpan!");
+                } catch(e) { alert("Gagal: " + e.message); }
                 setIsSaving(false);
              };
 
@@ -1156,6 +1181,18 @@
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Jam Selesai</label>
                                     <input type="time" value={tempEndTime} onChange={e=>setTempEndTime(e.target.value)} className="w-full p-3.5 border-2 border-slate-200 rounded-xl bg-white font-bold text-slate-800 focus:border-primary outline-none transition-colors cursor-pointer"/>
+                                </div>
+                            </div>
+                            <div className="md:col-span-2 mt-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Folder Soal yang Diterbitkan <span className="text-primary font-medium lowercase">(Centang lebih dari satu untuk menggabungkan soal)</span></label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                    {availableFolders.map(f => (
+                                        <label key={f} className={`flex items-center p-3 border-2 rounded-xl cursor-pointer transition-all ${tempFolders.includes(f) ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 hover:border-primary/30 hover:bg-slate-50'}`}>
+                                            <input type="checkbox" checked={tempFolders.includes(f)} onChange={() => toggleFolder(f)} className="mr-3 w-5 h-5 accent-primary" />
+                                            <span className="font-bold text-slate-700 text-sm truncate" title={f}>{f}</span>
+                                        </label>
+                                    ))}
+                                    {availableFolders.length === 0 && <span className="text-slate-400 text-sm font-medium">Belum ada folder soal terdeteksi.</span>}
                                 </div>
                             </div>
                             <div className="md:col-span-2 flex flex-col sm:flex-row flex-wrap gap-4 items-center justify-between p-4 mt-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
@@ -1244,38 +1281,151 @@
 
           const AdminTokens = () => {
              const [isSaving, setIsSaving] = useState(false);
-             const { showPrompt, showConfirm } = useContext(DialogContext);
+             const [showImport, setShowImport] = useState(false);
+             const [showAdd, setShowAdd] = useState(false);
+             const [addForm, setAddForm] = useState({ name: '', school: organizerName, jenis_soal: '' });
              
              const actualTokens = tokens.filter(t => !t.code.startsWith('SYS_'));
 
-             const addManual = async () => {
-                 const name = await showPrompt("Masukkan Nama Peserta:");
-                 if (!name) return;
-                 const school = await showPrompt("Masukkan Asal Sekolah:", organizerName) || organizerName;
+             const handleAddSubmit = async (e) => {
+                 e.preventDefault();
+                 if (!addForm.name) return;
                  const newCode = `TKA-${Math.random().toString(36).substring(2,6).toUpperCase()}`;
                  
                  setIsSaving(true);
                  try { 
                      const db = await getSupabase(); 
-                     await db.from('tokens').insert([{ code: newCode, status: 'AVAILABLE', participant_name: name, participant_school: school, generatedAt: new Date().toISOString() }]); 
+                     await db.from('tokens').insert([{ 
+                         code: newCode, 
+                         status: 'AVAILABLE', 
+                         participant_name: addForm.name, 
+                         participant_school: addForm.school, 
+                         jenis_soal: addForm.jenis_soal,
+                         generatedAt: new Date().toISOString() 
+                     }]); 
                      fetchSupabaseData(); 
-                 } catch(e) { } 
+                     setShowAdd(false);
+                     setAddForm({ name: '', school: organizerName, jenis_soal: '' });
+                 } catch(e) { alert("Gagal menambah peserta: Pastikan Anda telah menjalankan perintah SQL ALTER TABLE untuk kolom jenis_soal."); } 
                  setIsSaving(false);
              };
 
              const deleteToken = async (code) => {
-                 const isConfirmed = await showConfirm(`Yakin ingin menghapus token ${code}?`);
-                 if(!isConfirmed) return;
-                 
+                 if(!confirm(`Yakin ingin menghapus token ${code}?`)) return;
                  setIsSaving(true);
                  try { const db = await getSupabase(); await db.from('tokens').delete().eq('code', code); fetchSupabaseData(); } catch(e) { } setIsSaving(false);
              };
 
+             const downloadTemplateCSV = () => {
+                 const csvContent = "Nama Peserta,Asal Sekolah,Jenis Soal\nBudi Santoso,SDN 1 Jakarta,Matematika\nSiti Aminah,SDN 2 Jakarta,IPA\n";
+                 const link = document.createElement("a");
+                 link.setAttribute("href", URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })));
+                 link.setAttribute("download", "Template_Peserta.csv");
+                 document.body.appendChild(link); link.click(); document.body.removeChild(link);
+             };
+
+             const handleUploadCSV = (e) => {
+                 const file = e.target.files[0];
+                 if (!file) return;
+                 
+                 const reader = new FileReader();
+                 reader.onload = async (event) => {
+                     const fileContent = event.target.result;
+                     let payloads = [];
+
+                     try {
+                         const lines = fileContent.split('\n').filter(l => l.trim() !== '');
+                         for (let i = (lines[0].toLowerCase().includes('nama') ? 1 : 0); i < lines.length; i++) {
+                             const cols = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
+                             const cleanCol = (col) => col ? col.replace(/(^"|"$)/g, '').replace(/""/g, '"').trim() : '';
+                             
+                             if (cols.length >= 1) {
+                                 payloads.push({
+                                     code: `TKA-${Math.random().toString(36).substring(2,6).toUpperCase()}`,
+                                     status: 'AVAILABLE',
+                                     participant_name: cleanCol(cols[0]),
+                                     participant_school: cleanCol(cols[1]) || organizerName,
+                                     jenis_soal: cleanCol(cols[2]) || '',
+                                     generatedAt: new Date().toISOString()
+                                 });
+                             }
+                         }
+
+                         if (payloads.length === 0) throw new Error("Data kosong atau format salah.");
+
+                         setIsSaving(true);
+                         const db = await getSupabase();
+                         const { error } = await db.from('tokens').insert(payloads);
+                         if (error) throw error;
+                         
+                         setShowImport(false); 
+                         fetchSupabaseData(); 
+                         alert(`Berhasil mengimpor ${payloads.length} peserta!`);
+                         
+                     } catch(err) { 
+                         alert("Gagal impor: " + err.message + ". Pastikan kolom jenis_soal sudah ditambahkan ke database."); 
+                     } finally { 
+                         setIsSaving(false); 
+                         e.target.value = null; 
+                     }
+                 };
+                 reader.readAsText(file);
+             };
+
              return (
                <AdminLayout title="Daftar Peserta">
-                 <div className="bg-white p-5 rounded-3xl border border-slate-100 mb-8 flex justify-between items-center shadow-sm">
-                    <button onClick={addManual} className="bg-success hover:bg-success-600 text-white px-6 py-3 rounded-xl text-sm font-black flex items-center transition-colors shadow-lg"><Plus size={18} className="mr-2"/> Tambah Peserta</button>
+                 <div className="bg-white p-5 rounded-3xl border border-slate-100 mb-8 flex flex-wrap justify-between items-center shadow-sm gap-4">
+                    <div className="flex gap-3">
+                        <button onClick={() => setShowAdd(true)} className="bg-success hover:bg-success-600 text-white px-6 py-3 rounded-xl text-sm font-black flex items-center transition-colors shadow-lg"><Plus size={18} className="mr-2"/> Tambah Peserta</button>
+                        <button onClick={() => setShowImport(true)} className="bg-primary hover:bg-primary-700 text-white px-6 py-3 rounded-xl text-sm font-black flex items-center transition-colors shadow-lg"><Cloud size={18} className="mr-2"/> Unggah CSV</button>
+                    </div>
                  </div>
+
+                 {showAdd && (
+                     <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 animate-fade-in">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-black text-slate-800 text-lg">Tambah Peserta Manual</h3>
+                                <button onClick={()=>setShowAdd(false)} className="text-slate-400 hover:text-slate-800"><X size={20}/></button>
+                            </div>
+                            <form onSubmit={handleAddSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Nama Peserta</label>
+                                    <input type="text" value={addForm.name} onChange={e=>setAddForm({...addForm, name: e.target.value})} className="w-full p-3.5 border-2 border-slate-200 rounded-xl outline-none focus:border-primary font-bold transition-colors" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Asal Sekolah</label>
+                                    <input type="text" value={addForm.school} onChange={e=>setAddForm({...addForm, school: e.target.value})} className="w-full p-3.5 border-2 border-slate-200 rounded-xl outline-none focus:border-primary font-bold transition-colors" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Jenis Soal / Peminatan</label>
+                                    <input type="text" value={addForm.jenis_soal} onChange={e=>setAddForm({...addForm, jenis_soal: e.target.value})} className="w-full p-3.5 border-2 border-slate-200 rounded-xl outline-none focus:border-primary font-bold transition-colors" placeholder="Contoh: Matematika, Sains, dll" />
+                                </div>
+                                <button type="submit" disabled={isSaving} className="w-full py-4 bg-success text-white font-black rounded-xl shadow-lg hover:bg-success-600 transition-all mt-4 disabled:opacity-50">
+                                    {isSaving ? 'Menyimpan...' : 'Simpan Peserta'}
+                                </button>
+                            </form>
+                        </div>
+                     </div>
+                 )}
+
+                 {showImport && (
+                     <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 animate-fade-in">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-black text-slate-800 text-lg">Unggah Peserta (CSV)</h3>
+                                <button onClick={()=>setShowImport(false)} className="text-slate-400 hover:text-slate-800"><X size={20}/></button>
+                            </div>
+                            <div className="mb-6 bg-primary/5 p-4 rounded-2xl border border-primary/20">
+                                <p className="text-sm font-medium text-primary-800 mb-3">Gunakan template CSV standar untuk mengunggah data peserta secara massal.</p>
+                                <button onClick={downloadTemplateCSV} className="bg-white text-primary border border-primary/30 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center shadow-sm hover:bg-primary hover:text-white transition-colors"><FileText size={14} className="mr-2"/> Unduh Template CSV</button>
+                            </div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Pilih File CSV</label>
+                            <input type="file" accept=".csv" onChange={handleUploadCSV} className="w-full p-4 border-2 border-dashed border-slate-300 rounded-2xl file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer text-sm font-medium text-slate-600" />
+                            {isSaving && <p className="text-center text-sm font-bold text-primary mt-4">Memproses data...</p>}
+                        </div>
+                     </div>
+                 )}
                  
                  <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
                     <table className="w-full text-left text-sm">
@@ -1284,6 +1434,7 @@
                                 <th className="p-5 text-center w-16 text-slate-400 text-xs font-bold uppercase tracking-widest">No</th>
                                 <th className="p-5 text-slate-400 text-xs font-bold uppercase tracking-widest">Nama Peserta</th>
                                 <th className="p-5 text-slate-400 text-xs font-bold uppercase tracking-widest">Asal Sekolah</th>
+                                <th className="p-5 text-slate-400 text-xs font-bold uppercase tracking-widest">Jenis Soal</th>
                                 <th className="p-5 text-slate-400 text-xs font-bold uppercase tracking-widest">Token</th>
                                 <th className="p-5 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">Status</th>
                                 <th className="p-5 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">Aksi</th>
@@ -1295,12 +1446,13 @@
                                     <td className="p-5 text-center text-slate-500 font-bold">{i+1}</td>
                                     <td className="p-5 font-black text-slate-800 uppercase">{t.participant_name || '-'}</td>
                                     <td className="p-5 text-slate-500 font-medium">{t.participant_school || '-'}</td>
+                                    <td className="p-5 text-slate-500 font-bold">{t.jenis_soal || '-'}</td>
                                     <td className="p-5 font-mono font-black text-primary">{t.code}</td>
                                     <td className="p-5 text-center"><span className={`px-3 py-1.5 text-[10px] font-black rounded-lg uppercase tracking-widest ${t.status === 'AVAILABLE' ? 'bg-success/10 text-success' : 'bg-rose-100 text-rose-600'}`}>{t.status}</span></td>
                                     <td className="p-5 text-center"><button onClick={()=>deleteToken(t.code)} className="text-rose-500 hover:text-white p-2 hover:bg-rose-500 rounded-lg transition-colors"><Trash2 size={18}/></button></td>
                                 </tr>
                             ))}
-                            {actualTokens.length === 0 && <tr><td colSpan="6" className="text-center py-10 text-slate-400 font-bold">Belum ada data peserta terdaftar.</td></tr>}
+                            {actualTokens.length === 0 && <tr><td colSpan="7" className="text-center py-10 text-slate-400 font-bold">Belum ada data peserta terdaftar.</td></tr>}
                         </tbody>
                     </table>
                  </div>
@@ -1433,88 +1585,12 @@
             const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
             const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
             const setFilterFolder = (f) => { window.savedAdminFolder = f; setFilterFolderLocal(f); };
-            
-            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
 
             const defaultMCQ = { id: '', type: 'MCQ', folder: filterFolder, difficulty: 'Sedang', question: '', options: [{id:'A', text:''}, {id:'B', text:''}, {id:'C', text:''}, {id:'D', text:''}], correctAnswer: 'A' };
             const defaultSHORT = { id: '', type: 'SHORT_ANSWER', folder: filterFolder, difficulty: 'Sedang', question: '', correctAnswer: '' };
             const defaultESSAY = { id: '', type: 'ESSAY', folder: filterFolder, difficulty: 'Sulit', question: '', correctAnswer: '' };
 
             const [formData, setFormData] = useState(defaultMCQ);
-
-            // LOGIKA SISTEM FOLDER
-            const folderStats = questions.reduce((acc, q) => { const f = q.folder || 'Utama'; acc[f] = (acc[f] || 0) + 1; return acc; }, {});
-            tokens.forEach(t => { if (t.code && t.code.startsWith('SYS_FOLDER_') && folderStats[t.status] === undefined) { folderStats[t.status] = 0; } });
-            if (folderStats['Utama'] === undefined) folderStats['Utama'] = 0;
-
-            const createFolder = async () => {
-                const fname = await showPrompt("Masukkan Nama Folder Baru:\n(Contoh: Tryout 1, Ulangan Harian)");
-                if (fname && fname.trim() !== '') {
-                    const folderName = fname.trim();
-                    setIsSaving(true);
-                    try {
-                        const db = await getSupabase();
-                        await db.from('tokens').insert([{ code: `SYS_FOLDER_${Date.now()}`, status: folderName, generatedAt: new Date().toISOString(), participant_name: 'SYSTEM_FOLDER' }]);
-                        await fetchSupabaseData();
-                        setFilterFolder(folderName); setView('list');
-                        await showAlert("Folder berhasil dibuat!");
-                    } catch(e) { await showAlert("Gagal menyimpan folder: " + e.message); }
-                    setIsSaving(false);
-                }
-            };
-
-            const editFolder = async (oldName) => {
-                const newName = await showPrompt(`Ubah nama folder "${oldName}" menjadi:`, oldName);
-                if (newName && newName.trim() !== '' && newName.trim() !== oldName) {
-                    setIsSaving(true);
-                    try {
-                        const db = await getSupabase();
-                        const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === oldName);
-                        if (folderToken) await db.from('tokens').update({ status: newName.trim() }).eq('code', folderToken.code); 
-                        await db.from('questions').update({ folder: newName.trim() }).eq('folder', oldName);
-                        
-                        if (activeFolder === oldName) { 
-                            await db.from('tokens').update({ status: newName.trim() }).eq('code', 'SYS_SETTING_FOLDER'); 
-                            setActiveFolder(newName.trim()); 
-                        }
-                        await fetchSupabaseData(); setFilterFolder(newName.trim());
-                        await showAlert("Nama folder berhasil diubah!");
-                    } catch(e) { await showAlert("Gagal ubah folder: " + e.message); }
-                    setIsSaving(false);
-                }
-            };
-
-            const deleteFolder = async (fname) => {
-                if (fname === 'Utama') return await showAlert("Folder Utama tidak dapat dihapus.");
-                const confirmDelete = await showConfirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`);
-                if (!confirmDelete) return;
-                setIsSaving(true);
-                try {
-                    const db = await getSupabase();
-                    const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === fname);
-                    if (folderToken) await db.from('tokens').delete().eq('code', folderToken.code); 
-                    await db.from('questions').delete().eq('folder', fname);
-                    
-                    if (activeFolder === fname) { 
-                        await db.from('tokens').update({ status: 'Utama' }).eq('code', 'SYS_SETTING_FOLDER'); 
-                        setActiveFolder('Utama'); 
-                    }
-                    await fetchSupabaseData(); setFilterFolder('Utama'); setView('folders');
-                    await showAlert("Folder berhasil dihapus!");
-                } catch(e) { await showAlert("Gagal hapus folder: " + e.message); }
-                setIsSaving(false);
-            };
-
-            const publishFolder = async (fname) => {
-                try {
-                    const db = await getSupabase();
-                    const { data } = await db.from('tokens').select('code').eq('code', 'SYS_SETTING_FOLDER').maybeSingle();
-                    if (data) await db.from('tokens').update({ status: fname }).eq('code', 'SYS_SETTING_FOLDER');
-                    else await db.from('tokens').insert([{ code: 'SYS_SETTING_FOLDER', status: fname, generatedAt: new Date().toISOString() }]);
-                    setActiveFolder(fname);
-                    await showAlert(`Sukses! Ujian pada folder "${fname}" kini aktif dan bisa dikerjakan peserta.`);
-                } catch(e) { await showAlert("Gagal terbit: " + e.message); }
-            };
 
             const saveQuestion = async (e) => {
                e.preventDefault(); setIsSaving(true);
@@ -1532,20 +1608,92 @@
                  else await db.from('questions').update(payload).eq('id', payload.id);
                  
                  setView('list'); await fetchSupabaseData(); 
-               } catch (err) { await showAlert(err.message); } finally { setIsSaving(false); }
+               } catch (err) { } finally { setIsSaving(false); }
             };
 
             const deleteQuestion = async (id) => {
-                const isConfirmed = await showConfirm("Yakin ingin menghapus soal ini?");
-                if(!isConfirmed) return;
+                if(!confirm("Hapus soal ini?")) return;
                 try { const db = await getSupabase(); await db.from('questions').delete().eq('id', id); setView('list'); await fetchSupabaseData(); } catch(e) { }
+            };
+
+            const duplicateQuestion = async (q) => {
+                if(!confirm("Duplikasi soal ini?")) return;
+                setIsSaving(true);
+                try {
+                    const db = await getSupabase();
+                    const duplicatedQ = { ...q, id: `q${Date.now()}_copy` };
+                    await db.from('questions').insert([duplicatedQ]);
+                    setFilterFolder(q.folder || filterFolder);
+                    setView('list');
+                    await fetchSupabaseData(); 
+                } catch(e) { }
+                setIsSaving(false);
+            };
+
+            const folderStats = questions.reduce((acc, q) => { const f = q.folder || 'Utama'; acc[f] = (acc[f] || 0) + 1; return acc; }, {});
+            tokens.forEach(t => { if (t.code && t.code.startsWith('SYS_FOLDER_') && folderStats[t.status] === undefined) { folderStats[t.status] = 0; } });
+            if (folderStats['Utama'] === undefined) folderStats['Utama'] = 0;
+
+            const createFolder = async () => {
+                const fname = prompt("Masukkan Nama Folder Baru:\n(Contoh: Tryout 1, Ulangan Harian)");
+                if (fname && fname.trim() !== '') {
+                    const folderName = fname.trim();
+                    setIsSaving(true);
+                    try {
+                        const db = await getSupabase();
+                        await db.from('tokens').insert([{ code: `SYS_FOLDER_${Date.now()}`, status: folderName, generatedAt: new Date().toISOString(), participant_name: 'SYSTEM_FOLDER' }]);
+                        await fetchSupabaseData();
+                        setFilterFolder(folderName); setView('list');
+                        alert("Folder berhasil dibuat!");
+                    } catch(e) { }
+                    setIsSaving(false);
+                }
+            };
+
+            const editFolder = async (oldName) => {
+                const newName = prompt(`Ubah nama folder "${oldName}" menjadi:`, oldName);
+                if (newName && newName.trim() !== '' && newName.trim() !== oldName) {
+                    setIsSaving(true);
+                    try {
+                        const db = await getSupabase();
+                        const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === oldName);
+                        if (folderToken) await db.from('tokens').update({ status: newName.trim() }).eq('code', folderToken.code); 
+                        await db.from('questions').update({ folder: newName.trim() }).eq('folder', oldName);
+                        
+                        if (activeFolder === oldName) { 
+                            await db.from('tokens').update({ status: newName.trim() }).eq('code', 'SYS_SETTING_FOLDER'); 
+                            setActiveFolder(newName.trim()); 
+                        }
+                        await fetchSupabaseData(); setFilterFolder(newName.trim());
+                    } catch(e) { }
+                    setIsSaving(false);
+                }
+            };
+
+            const deleteFolder = async (fname) => {
+                if (fname === 'Utama') { alert("Folder Utama tidak dapat dihapus."); return; }
+                if (!confirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`)) return;
+                setIsSaving(true);
+                try {
+                    const db = await getSupabase();
+                    const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === fname);
+                    if (folderToken) await db.from('tokens').delete().eq('code', folderToken.code); 
+                    await db.from('questions').delete().eq('folder', fname);
+                    
+                    if (activeFolder === fname) { 
+                        await db.from('tokens').update({ status: 'Utama' }).eq('code', 'SYS_SETTING_FOLDER'); 
+                        setActiveFolder('Utama'); 
+                    }
+                    await fetchSupabaseData(); setFilterFolder('Utama'); setView('folders');
+                } catch(e) { }
+                setIsSaving(false);
             };
 
             if (view === 'create' || view === 'edit') {
                const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), filterFolder, 'Utama'])];
                return (
                  <AdminLayout title="Editor Soal Kelas Olimpiade">
-                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 max-w-4xl mx-auto p-8 mb-10 animate-fade-in">
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 max-w-4xl mx-auto p-8 mb-10">
                         <form onSubmit={saveQuestion} className="space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100">
                                 <div>
@@ -1560,15 +1708,15 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Folder / Kategori</label>
-                                    <select value={formData.folder || filterFolder} onChange={e => setFormData({...formData, folder: e.target.value})} className="w-full p-4 border-2 border-slate-200 rounded-xl bg-white font-bold text-slate-800 focus:border-primary outline-none transition-colors cursor-pointer">
-                                        {availableFolders.map(f => <option key={f} value={f}>{f}</option>)}
-                                    </select>
-                                </div>
-                                <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tingkat Kesulitan & Bobot</label>
                                     <select value={formData.difficulty || 'Sedang'} onChange={e => setFormData({...formData, difficulty: e.target.value})} className="w-full p-4 border-2 border-slate-200 rounded-xl bg-white font-bold text-slate-800 focus:border-primary outline-none transition-colors cursor-pointer">
                                         <option value="Mudah">Mudah (Bobot 1.00)</option><option value="Sedang">Sedang (Bobot 1.25)</option><option value="Sulit">Sulit (Bobot 1.50)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Pilih Folder</label>
+                                    <select value={formData.folder || filterFolder} onChange={e => setFormData({...formData, folder: e.target.value})} className="w-full p-4 border-2 border-slate-200 rounded-xl bg-white font-bold text-slate-800 focus:border-primary outline-none transition-colors cursor-pointer">
+                                        {availableFolders.map(f => <option key={f} value={f}>{f}</option>)}
                                     </select>
                                 </div>
                             </div>
@@ -1625,45 +1773,52 @@
             }
 
             if (view === 'list') {
-              const folderQuestions = questions.filter(q => String(q.folder || 'Utama').trim().toLowerCase() === filterFolder.toLowerCase());
+              const folderQuestions = questions
+                .filter(q => String(q.folder || 'Utama').trim().toLowerCase() === filterFolder.toLowerCase())
+                .sort((a, b) => {
+                    const timeA = parseInt((a.id.match(/\d+/) || [0])[0]);
+                    const timeB = parseInt((b.id.match(/\d+/) || [0])[0]);
+                    return timeA - timeB;
+                });
+                
               return (
                 <AdminLayout title={`Folder: ${filterFolder}`}>
-                  <div className="mb-8 flex justify-between items-center bg-white p-5 rounded-3xl border border-slate-100 shadow-sm animate-fade-in">
-                     <button onClick={() => setView('folders')} className="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl text-sm font-bold flex items-center hover:bg-slate-200 transition-all"><ChevronLeft size={18} className="mr-2"/> Daftar Folder</button>
-                     <button onClick={() => {setFormData({...defaultMCQ, folder: filterFolder}); setView('create');}} className="bg-primary text-white px-6 py-3 rounded-xl text-sm font-black flex items-center shadow-lg hover:bg-primary-700 transition-all"><Plus size={18} className="mr-2"/> Tambah Soal</button>
+                  <div className="mb-6 flex justify-between items-center gap-3 bg-white p-4 rounded-xl border shadow-sm">
+                     <button onClick={() => setView('folders')} className="border px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center hover:bg-slate-50"><ChevronLeft size={16} className="mr-1"/> Kembali</button>
                   </div>
-                  <div className="space-y-6 max-w-5xl mx-auto animate-fade-in">
+                  <div className="space-y-4">
                     {folderQuestions.map((q, idx) => (
-                       <div key={q.id} className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-start gap-6">
-                         <div className="flex-1 min-w-0">
-                             <div className="flex flex-wrap items-center gap-2 mb-4">
-                                 <span className="text-sm font-black bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">No. {idx+1}</span>
-                                 <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg ${q.difficulty === 'Mudah' ? 'bg-success/10 text-success' : q.difficulty === 'Sedang' ? 'bg-secondary/10 text-secondary' : 'bg-rose-100 text-rose-600'}`}>{q.difficulty || 'Sedang'}</span>
-                                 <span className="text-[10px] font-black uppercase tracking-widest bg-primary/10 text-primary px-3 py-1.5 rounded-lg border border-primary/20">{q.type === 'MCQ' ? 'Pilihan Ganda' : q.type === 'SHORT_ANSWER' ? 'Isian Singkat' : 'Uraian'}</span>
+                       <div key={q.id} className="bg-white p-5 rounded-xl border shadow-sm flex flex-col sm:flex-row justify-between items-start gap-4">
+                         <div className="flex-1">
+                             <div className="flex items-center gap-2 mb-2">
+                                 <span className="text-xs font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-md">No. {idx+1}</span>
+                                 <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-wider">{q.type}</span>
                              </div>
-                             <div className="text-slate-800 font-medium rich-text-content text-base leading-relaxed" dangerouslySetInnerHTML={{__html: q.question}}></div>
+                             <div className="mt-2 text-slate-800 font-medium rich-text-content text-sm" dangerouslySetInnerHTML={{__html: q.question}}></div>
                          </div>
-                         <div className="flex md:flex-col gap-3 shrink-0 w-full md:w-auto">
-                            <button onClick={() => {setFormData(q); setView('edit');}} className="flex-1 md:flex-none text-white bg-primary py-3 px-6 hover:bg-primary-700 rounded-xl flex items-center justify-center font-bold text-sm transition-all shadow-md"><Edit size={16} className="mr-2"/> Edit</button>
-                            <button onClick={() => deleteQuestion(q.id)} className="flex-1 md:flex-none text-rose-600 bg-rose-50 py-3 px-6 hover:bg-rose-600 hover:text-white rounded-xl flex items-center justify-center font-bold text-sm transition-all"><Trash2 size={16} className="mr-2"/> Hapus</button>
+                         <div className="flex sm:flex-col gap-2 shrink-0">
+                            <button onClick={() => duplicateQuestion(q)} className="bg-success/10 text-success-700 hover:bg-success/20 p-2.5 rounded-xl font-bold text-xs flex items-center justify-center border border-success/20 flex-1 sm:flex-none transition-colors" title="Duplikasi Soal"><Copy size={16} className="sm:mr-1.5"/> <span className="hidden sm:inline">Duplikat</span></button>
+                            <button onClick={() => {setFormData(q); setView('edit');}} className="text-primary bg-primary/10 p-2 hover:bg-primary/20 rounded-lg flex items-center justify-center" title="Edit Soal"><Edit size={16}/></button>
+                            <button onClick={() => deleteQuestion(q.id)} className="text-rose-600 bg-rose-50 p-2 hover:bg-rose-100 rounded-lg flex items-center justify-center" title="Hapus Soal"><Trash2 size={16}/></button>
                          </div>
                        </div>
                     ))}
-                    {folderQuestions.length === 0 && <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-300 text-slate-400 font-black text-lg">Belum ada soal di folder ini.</div>}
+                    {folderQuestions.length === 0 && <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300 text-slate-500 font-bold">Belum ada soal di folder ini.</div>}
                   </div>
+                  <button onClick={() => {setFormData({...defaultMCQ, folder: filterFolder}); setView('create');}} className="fixed bottom-8 right-8 bg-primary text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-transform"><Plus size={28}/></button>
                 </AdminLayout>
               );
             }
 
             return (
-              <AdminLayout title="Manajemen Bank Soal (Kategori)">
+              <AdminLayout title="Manajemen Bank Soal">
                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 animate-fade-in">
                     <div onClick={createFolder} className="bg-primary/5 border-2 border-dashed border-primary/30 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer min-h-[220px] hover:bg-primary/10 transition-colors">
                         <div className="w-16 h-16 bg-primary/20 text-primary rounded-2xl flex items-center justify-center mb-4"><Plus size={30}/></div>
                         <span className="font-black text-lg text-primary">Buat Folder Baru</span>
                     </div>
                     {Object.entries(folderStats).map(([fname, count]) => {
-                        const isPublished = activeFolder.toLowerCase() === fname.toLowerCase();
+                        const isPublished = activeFolder.split(',').map(f=>f.trim().toLowerCase()).includes(fname.toLowerCase());
                         return (
                         <div key={fname} className={`bg-white border-2 rounded-3xl p-6 md:p-8 flex flex-col justify-between shadow-sm min-h-[220px] relative overflow-hidden transition-all ${isPublished ? 'border-primary ring-4 ring-primary/10' : 'border-slate-100 hover:border-slate-300'}`}>
                             {isPublished && <div className="absolute top-0 right-0 bg-primary text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-bl-xl">Aktif / Terbit</div>}
@@ -1677,9 +1832,6 @@
                                     <button onClick={() => editFolder(fname)} className="px-4 bg-secondary/10 text-secondary-700 rounded-xl hover:bg-secondary/20 transition-colors" title="Edit Nama Folder"><Edit size={18}/></button>
                                     {fname !== 'Utama' && <button onClick={() => deleteFolder(fname)} className="px-4 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors" title="Hapus Folder Permanen"><Trash2 size={18}/></button>}
                                 </div>
-                                <button onClick={() => publishFolder(fname)} className={`w-full py-3 rounded-xl text-sm font-black transition-all ${isPublished ? 'bg-primary text-white shadow-lg' : 'bg-white border-2 border-slate-200 text-slate-500 hover:border-primary hover:text-primary'}`}>
-                                    {isPublished ? 'Sedang Diterbitkan' : 'Terbitkan ke Siswa'}
-                                </button>
                             </div>
                         </div>
                     )})}
@@ -1801,6 +1953,7 @@
                                   <td className="py-3 px-4 text-center text-success text-base">{r.score}</td>
                                </tr>
                             ))}
+                            {processedResults.length === 0 && <tr><td colSpan="5" className="text-center py-10 text-slate-400 font-bold">Belum ada data hasil ujian yang masuk.</td></tr>}
                          </tbody>
                       </table>
                       <div className="mt-20 flex justify-end text-center text-slate-800 font-bold text-sm"><div><p className="mb-24">Mengetahui,<br/>Koordinator Olimpiade</p><p className="font-black uppercase tracking-widest border-t-2 border-slate-800 pt-2 w-48 mx-auto">Administrator</p></div></div>
@@ -1809,57 +1962,21 @@
              );
           };
 
-          return (
-            <DialogContext.Provider value={{ showPrompt: showCustomPrompt, showAlert: showCustomAlert, showConfirm: showCustomConfirm }}>
-                {(() => {
-                    switch (currentRoute) {
-                        case '/': case '/login': return <ParticipantLogin />;
-                        case '/instruction': return <ParticipantInstruction />;
-                        case '/exam': return <ExamEngine />;
-                        case '/review': return <ExamReview />;
-                        case '/dashboard': return <StudentDashboard />;
-                        case '/admin': case '/admin/login': return <AdminLogin />;
-                        case '/admin/dashboard': return <AdminDashboard />;
-                        case '/admin/tokens': return <AdminTokens />;
-                        case '/admin/results': return <AdminResults />;
-                        case '/admin/questions': return <AdminQuestions />;
-                        case '/admin/analysis': return <AdminItemAnalysis />;
-                        case '/admin/reports': return <AdminReports />;
-                        default: return <ParticipantLogin />;
-                    }
-                })()}
-
-                {/* MODAL GLOBAL PENGGANTI ALERT/CONFIRM/PROMPT BAWAAN BROWSER */}
-                {dialogState && (
-                    <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8 max-w-sm w-full animate-fade-in">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${dialogState.type === 'alert' ? 'bg-primary/10 text-primary' : dialogState.type === 'confirm' ? 'bg-secondary/10 text-secondary' : 'bg-success/10 text-success'}`}>
-                                <i className={`fas ${dialogState.type === 'alert' ? 'fa-info' : dialogState.type === 'confirm' ? 'fa-question' : 'fa-keyboard'} text-xl`}></i>
-                            </div>
-                            <h3 className="font-black text-xl text-slate-800 mb-2">{dialogState.type === 'alert' ? 'Informasi' : dialogState.type === 'confirm' ? 'Konfirmasi' : 'Input Dibutuhkan'}</h3>
-                            <p className="text-slate-600 font-medium mb-6">{dialogState.msg}</p>
-                            
-                            {dialogState.type === 'prompt' && (
-                                <input type="text" id="prompt-global-input" defaultValue={dialogState.defaultValue} className="w-full p-4 border-2 border-slate-200 rounded-xl mb-6 focus:border-success focus:ring-4 focus:ring-success/10 outline-none font-bold text-slate-800 transition-all" autoFocus onKeyDown={(e) => { if(e.key === 'Enter') dialogState.resolve(e.target.value); }} />
-                            )}
-                            
-                            <div className="flex justify-end gap-3">
-                                {dialogState.type !== 'alert' && (
-                                    <button onClick={() => dialogState.resolve(null)} className="px-5 py-3 font-bold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Batal</button>
-                                )}
-                                <button onClick={() => {
-                                    if (dialogState.type === 'prompt') {
-                                        dialogState.resolve(document.getElementById('prompt-global-input').value);
-                                    } else {
-                                        dialogState.resolve(true);
-                                    }
-                                }} className={`px-6 py-3 font-black text-white rounded-xl shadow-lg transition-all ${dialogState.type === 'alert' ? 'bg-primary hover:bg-primary-700' : dialogState.type === 'confirm' ? 'bg-secondary hover:bg-secondary-600' : 'bg-success hover:bg-success-600'}`}>Lanjutkan</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </DialogContext.Provider>
-          );
+          switch (currentRoute) {
+            case '/': case '/login': return <ParticipantLogin />;
+            case '/instruction': return <ParticipantInstruction />;
+            case '/exam': return <ExamEngine />;
+            case '/review': return <ExamReview />;
+            case '/dashboard': return <StudentDashboard />;
+            case '/admin': case '/admin/login': return <AdminLogin />;
+            case '/admin/dashboard': return <AdminDashboard />;
+            case '/admin/tokens': return <AdminTokens />;
+            case '/admin/results': return <AdminResults />;
+            case '/admin/questions': return <AdminQuestions />;
+            case '/admin/analysis': return <AdminItemAnalysis />;
+            case '/admin/reports': return <AdminReports />;
+            default: return <ParticipantLogin />;
+          }
         }
 
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
