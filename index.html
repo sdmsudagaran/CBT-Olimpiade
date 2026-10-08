@@ -226,7 +226,6 @@
                 }, 10);
             }
         };
-
         const calculateScore = (answers, questions) => {
             let totalPoints = 0;
             let correctMudah = 0, correctSedang = 0, correctSulit = 0;
@@ -1884,10 +1883,10 @@
             const [view, setViewLocal] = useState(window.savedAdminView || 'folders'); 
             const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
             const [showPreview, setShowPreview] = useState(true);
-            const [isPreviewMode, setIsPreviewMode] = useState(false); // Dipindah ke atas agar aman
-            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext); // Panggil UI Dialog
+            const [isPreviewMode, setIsPreviewMode] = useState(false); // Dipindah ke sini agar aman dari blank
+            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
 
-            // Memicu render rumus setiap kali ada perubahan view/tampilan di Admin
+            // Memicu render rumus otomatis tiap ganti tampilan
             useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
 
             const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
@@ -1987,28 +1986,7 @@
                     setIsSaving(false);
                 }
             };
-
-            const deleteFolder = async (fname) => {
-                if (fname === 'Utama') { await showAlert("Folder Utama tidak dapat dihapus."); return; }
-                const isConfirmed = await showConfirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`);
-                if (!isConfirmed) return;
-                setIsSaving(true);
-                try {
-                    const db = await getSupabase();
-                    const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === fname);
-                    if (folderToken) await db.from('tokens').delete().eq('code', folderToken.code); 
-                    await db.from('questions').delete().eq('folder', fname);
-                    
-                    if (activeFolder && activeFolder.includes(fname)) { 
-                        const updatedActive = activeFolder.split(',').map(x=>x.trim()).filter(x=>x!==fname).join(', ') || 'Utama';
-                        await db.from('tokens').update({ status: updatedActive }).eq('code', 'SYS_SETTING_FOLDER'); 
-                        setActiveFolder(updatedActive); 
-                    }
-                    await fetchSupabaseData(); setFilterFolder('Utama'); setView('folders');
-                } catch(e) { }
-                setIsSaving(false);
-            };
-
+            
             const deleteFolder = async (fname) => {
                 if (fname === 'Utama') { alert("Folder Utama tidak dapat dihapus."); return; }
                 const isConfirmed = await showConfirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`);
