@@ -1280,11 +1280,22 @@
              const [isMassEdit, setIsMassEdit] = useState(false);
              const [massEditData, setMassEditData] = useState([]);
              
+             // --- FILTER & SORT DAFTAR PESERTA ---
+             const [filterSchool, setFilterSchool] = useState('Semua');
+             const [sortOrder, setSortOrder] = useState('DEFAULT');
+
              const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
              const actualTokens = tokens.filter(t => !t.code.startsWith('SYS_'));
              
              const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), 'Utama'])];
+             const schoolList = ['Semua', ...new Set(actualTokens.map(t => t.participant_school).filter(Boolean))];
 
+             let displayedTokens = actualTokens.filter(t => filterSchool === 'Semua' || t.participant_school === filterSchool);
+             if (sortOrder === 'NAME_ASC') {
+                 displayedTokens.sort((a,b) => (a.participant_name || '').localeCompare(b.participant_name || ''));
+             } else if (sortOrder === 'NAME_DESC') {
+                 displayedTokens.sort((a,b) => (b.participant_name || '').localeCompare(a.participant_name || ''));
+             }
              const handleAddSubmit = async (e) => {
                  e.preventDefault();
                  if (!addForm.name) return;
@@ -1318,7 +1329,7 @@
              };
 
              const handleSelectAll = (e) => {
-                 if (e.target.checked) setSelectedTokens(actualTokens.map(t => t.code));
+                 if (e.target.checked) setSelectedTokens(displayedTokens.map(t => t.code));
                  else setSelectedTokens([]);
              };
 
@@ -1376,15 +1387,15 @@
 
              // FITUR CETAK PESERTA PDF
              const downloadPesertaPDF = () => {
-                 if (actualTokens.length === 0) {
-                     showAlert("Belum ada data peserta untuk dicetak.");
+                 if (displayedTokens.length === 0) {
+                     showAlert("Belum ada data peserta untuk dicetak sesuai filter.");
                      return;
                  }
                  const printWindow = window.open('', '_blank');
                  const dateStr = new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
                  
                  let tableRowsHTML = '';
-                 actualTokens.forEach((t, i) => {
+                 displayedTokens.forEach((t, i) => {
                      tableRowsHTML += `<tr><td class="text-center">${i + 1}</td><td style="text-transform: uppercase; font-weight: 600;">${t.participant_name || '-'}</td><td>${t.participant_school || '-'}</td><td class="text-center font-bold" style="color: #0F4C81;">${t.jenis_soal || 'Utama'}</td><td class="text-center token-font">${t.code}</td></tr>`;
                  });
 
@@ -1466,8 +1477,8 @@
 
              return (
                <AdminLayout title="Daftar Peserta">
-                 <div className="bg-white p-5 rounded-3xl border border-slate-100 mb-6 flex flex-wrap justify-between items-center shadow-sm gap-4">
-                    <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+                 <div className="bg-white p-5 rounded-3xl border border-slate-100 mb-6 flex flex-col xl:flex-row flex-wrap justify-between items-start xl:items-center shadow-sm gap-4">
+                    <div className="flex flex-wrap gap-3 w-full xl:w-auto">
                         {!isMassEdit ? (
                             <>
                                 <button onClick={() => setShowAdd(true)} className="flex-1 sm:flex-none justify-center bg-success hover:bg-success-600 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-black flex items-center transition-colors shadow-lg"><Plus size={16} className="mr-2"/> Tambah</button>
@@ -1488,6 +1499,21 @@
                             </>
                         )}
                     </div>
+
+                    {!isMassEdit && (
+                        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                             <div className="flex items-center pl-2 text-slate-400"><i className="fas fa-filter text-xs"></i></div>
+                             <select value={filterSchool} onChange={e=>{setFilterSchool(e.target.value); setSelectedTokens([]);}} className="bg-transparent border-none outline-none font-bold text-slate-700 text-xs py-2 px-2 cursor-pointer w-full md:w-auto">
+                                 {schoolList.map(s => <option key={s} value={s}>{s === 'Semua' ? 'Filter Sekolah: Semua' : s}</option>)}
+                             </select>
+                             <div className="w-px h-5 bg-slate-300 hidden md:block"></div>
+                             <select value={sortOrder} onChange={e=>{setSortOrder(e.target.value); setSelectedTokens([]);}} className="bg-transparent border-none outline-none font-bold text-primary text-xs py-2 px-2 cursor-pointer w-full md:w-auto">
+                                 <option value="DEFAULT">Urutan Terbaru</option>
+                                 <option value="NAME_ASC">Nama (A - Z)</option>
+                                 <option value="NAME_DESC">Nama (Z - A)</option>
+                             </select>
+                        </div>
+                    )}
                  </div>
 
                  {showAdd && (
@@ -1543,7 +1569,7 @@
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
-                                <th className="p-4 text-center w-12"><input type="checkbox" onChange={handleSelectAll} checked={selectedTokens.length === actualTokens.length && actualTokens.length > 0} className="w-4 h-4 accent-primary" /></th>
+                                <th className="p-4 text-center w-12"><input type="checkbox" onChange={handleSelectAll} checked={selectedTokens.length === displayedTokens.length && displayedTokens.length > 0} className="w-4 h-4 accent-primary" /></th>
                                 <th className="p-4 text-center w-16 text-slate-400 text-[10px] font-bold uppercase tracking-widest">No</th>
                                 <th className="p-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Nama Peserta</th>
                                 <th className="p-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Asal Sekolah</th>
@@ -1555,7 +1581,7 @@
                         </thead>
                         <tbody>
                             {!isMassEdit ? (
-                                actualTokens.map((t, i) => (
+                                displayedTokens.map((t, i) => (
                                     <tr key={t.code} className={`border-b border-slate-50 transition-colors ${selectedTokens.includes(t.code) ? 'bg-primary/5' : 'hover:bg-slate-50'}`}>
                                         <td className="p-4 text-center"><input type="checkbox" checked={selectedTokens.includes(t.code)} onChange={() => handleSelectToken(t.code)} className="w-4 h-4 accent-primary cursor-pointer" /></td>
                                         <td className="p-4 text-center text-slate-500 font-bold">{i+1}</td>
@@ -1589,7 +1615,7 @@
                                     </tr>
                                 ))
                             )}
-                            {actualTokens.length === 0 && <tr><td colSpan="8" className="text-center py-10 text-slate-400 font-bold">Belum ada data peserta terdaftar.</td></tr>}
+                            {displayedTokens.length === 0 && <tr><td colSpan="8" className="text-center py-10 text-slate-400 font-bold">Data peserta tidak ditemukan pada filter ini.</td></tr>}
                         </tbody>
                     </table>
                  </div>
@@ -1727,7 +1753,7 @@
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
-                                <th className="p-4 text-center w-12 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Rank</th>
+                                <th className="p-4 text-center w-12 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Ranking</th>
                                 <th className="p-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">Nama Peserta</th>
                                 <th className="p-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest text-center">Sekolah</th>
                                 <th className="p-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest text-center">Kategori Soal</th>
