@@ -407,10 +407,14 @@
 
           useEffect(() => { fetchSupabaseData(); }, [isAdminLoggedIn]);
 
-          const activeQuestions = isAdminLoggedIn ? questions : questions.filter(q => {
-              const activeFolders = (activeFolder || 'Utama').split(',').map(f => f.trim().toLowerCase());
-              return activeFolders.includes(String(q.folder || 'Utama').trim().toLowerCase());
-          });
+          const activeQuestions = isAdminLoggedIn 
+            ? questions 
+            : questions.filter(q => {
+                const targetFolder = (activeSession && activeSession.participant && activeSession.participant.jenis_soal) 
+                    ? activeSession.participant.jenis_soal 
+                    : (activeFolder || 'Utama');
+                return String(q.folder || 'Utama').trim().toLowerCase() === String(targetFolder).trim().toLowerCase();
+            });
 
           useEffect(() => {
             if (currentRoute === '/') {
@@ -451,13 +455,15 @@
 
                 setActiveSession({ 
                     token: tokenObj.code, 
-                    participant: { name: tokenObj.participant_name || 'Peserta', school: tokenObj.participant_school || organizerName, jenis_soal: tokenObj.jenis_soal || '' }, 
+                    participant: { 
+                        name: tokenObj.participant_name || 'Peserta', 
+                        school: tokenObj.participant_school || organizerName, 
+                        nis: tokenObj.participant_nis || '', 
+                        grade: tokenObj.participant_grade || '',
+                        jenis_soal: tokenObj.jenis_soal || 'Utama'
+                    }, 
                     answers: {}, flagged: [], status: 'SETUP' 
                 });
-                navigate('/instruction');
-              } catch (err) { setError('Gagal terhubung ke server.'); }
-              setIsChecking(false);
-            };
 
             return (
               <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
@@ -1285,28 +1291,31 @@
              const [massEditData, setMassEditData] = useState([]);
              
              const actualTokens = tokens.filter(t => !t.code.startsWith('SYS_'));
+             const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), 'Utama'])];
 
              const handleAddSubmit = async (e) => {
-                 e.preventDefault();
-                 if (!addForm.name) return;
-                 const newCode = `TKA-${Math.random().toString(36).substring(2,6).toUpperCase()}`;
-                 setIsSaving(true);
-                 try { 
-                     const db = await getSupabase(); 
-                     await db.from('tokens').insert([{ 
-                         code: newCode, 
-                         status: 'AVAILABLE', 
-                         participant_name: addForm.name, 
-                         participant_school: addForm.school, 
-                         jenis_soal: addForm.jenis_soal,
-                         generatedAt: new Date().toISOString() 
-                     }]); 
-                     fetchSupabaseData(); 
-                     setShowAdd(false);
-                     setAddForm({ name: '', school: organizerName, jenis_soal: '' });
-                 } catch(e) { alert("Gagal menambah peserta. Pastikan kolom jenis_soal tersedia di database."); } 
-                 setIsSaving(false);
-             };
+            e.preventDefault();
+            if (!addForm.name) return;
+            const newCode = `TKA-${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+            setIsSaving(true);
+            try {
+                const db = await getSupabase();
+                await db.from('tokens').insert([{ 
+                    code: newCode, 
+                    status: 'AVAILABLE', 
+                    participant_name: addForm.name, 
+                    participant_school: addForm.school, 
+                    jenis_soal: addForm.jenis_soal || availableFolders[0], // Menyimpan jenis_soal
+                    generatedAt: new Date().toISOString() 
+                }]);
+                fetchSupabaseData();
+                setShowAdd(false);
+                setAddForm({ name: '', school: organizerName, jenis_soal: '' });
+            } catch (err) {
+                alert("Gagal: " + err.message);
+            }
+            setIsSaving(false);
+        };
 
              const deleteToken = async (code) => {
                  if(!confirm(`Yakin ingin menghapus token ${code}?`)) return;
@@ -1349,24 +1358,25 @@
              };
 
              const saveMassEdit = async () => {
-                 setIsSaving(true);
-                 try {
-                     const db = await getSupabase();
-                     const updates = massEditData.map(t => ({
-                         code: t.code,
-                         status: t.status,
-                         participant_name: t.participant_name,
-                         participant_school: t.participant_school,
-                         jenis_soal: t.jenis_soal
-                     }));
-                     await db.from('tokens').upsert(updates);
-                     fetchSupabaseData();
-                     setIsMassEdit(false);
-                     setSelectedTokens([]);
-                     alert("Data masal berhasil diperbarui!");
-                 } catch(e) { alert("Gagal menyimpan data masal: " + e.message); }
-                 setIsSaving(false);
-             };
+            setIsSaving(true);
+            try {
+                const db = await getSupabase();
+                await db.from('tokens').upsert(massEditData.map(t => ({ 
+                    code: t.code, 
+                    status: t.status, 
+                    participant_name: t.participant_name, 
+                    participant_school: t.participant_school, 
+                    jenis_soal: t.jenis_soal // Menyimpan jenis soal hasil edit
+                })));
+                fetchSupabaseData(); 
+                setIsMassEdit(false); 
+                setSelectedTokens([]); 
+                alert("Data berhasil diperbarui!");
+            } catch(e) { 
+                alert(e.message); 
+            }
+            setIsSaving(false);
+        };
 
              const downloadTemplateCSV = () => {
                  const csvContent = "Nama Peserta,Asal Sekolah,Jenis Soal\nBudi Santoso,SDN 1 Jakarta,Matematika\nSiti Aminah,SDN 2 Jakarta,IPA\n";
@@ -1516,7 +1526,8 @@
                                         <td className="p-5 text-center text-slate-500 font-bold">{i+1}</td>
                                         <td className="p-5 font-black text-slate-800 uppercase">{t.participant_name || '-'}</td>
                                         <td className="p-5 text-slate-500 font-medium">{t.participant_school || '-'}</td>
-                                        <td className="p-5 text-slate-500 font-bold">{t.jenis_soal || '-'}</td>
+                                        <td className="p-5 text-primary font-bold text-xs uppercase tracking-widest">{t.jenis_soal || 'Utama'}</td>
+                                        <td className="p-5 font-mono font-black text-primary">{t.code}</td>
                                         <td className="p-5 font-mono font-black text-primary">{t.code}</td>
                                         <td className="p-5 text-center"><span className={`px-3 py-1.5 text-[10px] font-black rounded-lg uppercase tracking-widest ${t.status === 'AVAILABLE' ? 'bg-success/10 text-success' : 'bg-rose-100 text-rose-600'}`}>{t.status}</span></td>
                                         <td className="p-5 text-center"><button onClick={()=>deleteToken(t.code)} className="text-rose-500 hover:text-white p-2 hover:bg-rose-500 rounded-lg transition-colors"><Trash2 size={18}/></button></td>
