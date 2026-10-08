@@ -223,7 +223,7 @@
                         delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}, {left: '\\[', right: '\\]', display: true}],
                         throwOnError : false
                     });
-                }, 300);
+                }, 10);
             }
         };
 
@@ -1789,7 +1789,11 @@
             const [view, setViewLocal] = useState(window.savedAdminView || 'folders'); 
             const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
             const [showPreview, setShowPreview] = useState(true);
-            const { showConfirm } = useContext(DialogContext);
+            const [isPreviewMode, setIsPreviewMode] = useState(false); // Dipindah ke atas agar aman
+            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext); // Panggil UI Dialog
+
+            // Memicu render rumus setiap kali ada perubahan view/tampilan di Admin
+            useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
 
             const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
             const setFilterFolder = (f) => { window.savedAdminFolder = f; setFilterFolderLocal(f); };
@@ -1853,7 +1857,7 @@
             if (folderStats['Utama'] === undefined) folderStats['Utama'] = 0;
 
             const createFolder = async () => {
-                const fname = prompt("Masukkan Nama Folder Baru:\n(Contoh: Tryout 1, Ulangan Harian)");
+                const fname = await showPrompt("Masukkan Nama Folder Baru:\n(Contoh: Tryout 1, Ulangan Harian)");
                 if (fname && fname.trim() !== '') {
                     const folderName = fname.trim();
                     setIsSaving(true);
@@ -1862,14 +1866,14 @@
                         await db.from('tokens').insert([{ code: `SYS_FOLDER_${Date.now()}`, status: folderName, generatedAt: new Date().toISOString(), participant_name: 'SYSTEM_FOLDER' }]);
                         await fetchSupabaseData();
                         setFilterFolder(folderName); setView('list');
-                        alert("Folder berhasil dibuat!");
+                        await showAlert("Folder berhasil dibuat!");
                     } catch(e) { }
                     setIsSaving(false);
                 }
             };
 
             const editFolder = async (oldName) => {
-                const newName = prompt(`Ubah nama folder "${oldName}" menjadi:`, oldName);
+                const newName = await showPrompt(`Ubah nama folder "${oldName}" menjadi:`, oldName);
                 if (newName && newName.trim() !== '' && newName.trim() !== oldName) {
                     setIsSaving(true);
                     try {
@@ -1878,7 +1882,7 @@
                         if (folderToken) await db.from('tokens').update({ status: newName.trim() }).eq('code', folderToken.code); 
                         await db.from('questions').update({ folder: newName.trim() }).eq('folder', oldName);
                         
-                        if (activeFolder.includes(oldName)) { 
+                        if (activeFolder && activeFolder.includes(oldName)) { 
                             const updatedActive = activeFolder.replace(oldName, newName.trim());
                             await db.from('tokens').update({ status: updatedActive }).eq('code', 'SYS_SETTING_FOLDER'); 
                             setActiveFolder(updatedActive); 
@@ -1887,6 +1891,27 @@
                     } catch(e) { }
                     setIsSaving(false);
                 }
+            };
+
+            const deleteFolder = async (fname) => {
+                if (fname === 'Utama') { await showAlert("Folder Utama tidak dapat dihapus."); return; }
+                const isConfirmed = await showConfirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`);
+                if (!isConfirmed) return;
+                setIsSaving(true);
+                try {
+                    const db = await getSupabase();
+                    const folderToken = tokens.find(t => t.code && t.code.startsWith('SYS_FOLDER_') && t.status === fname);
+                    if (folderToken) await db.from('tokens').delete().eq('code', folderToken.code); 
+                    await db.from('questions').delete().eq('folder', fname);
+                    
+                    if (activeFolder && activeFolder.includes(fname)) { 
+                        const updatedActive = activeFolder.split(',').map(x=>x.trim()).filter(x=>x!==fname).join(', ') || 'Utama';
+                        await db.from('tokens').update({ status: updatedActive }).eq('code', 'SYS_SETTING_FOLDER'); 
+                        setActiveFolder(updatedActive); 
+                    }
+                    await fetchSupabaseData(); setFilterFolder('Utama'); setView('folders');
+                } catch(e) { }
+                setIsSaving(false);
             };
 
             const deleteFolder = async (fname) => {
@@ -1911,12 +1936,10 @@
             };
 
             if (view === 'create' || view === 'edit') {
-               const [isPreviewMode, setIsPreviewMode] = useState(false);
                const handleDifficultyChange = (newDiff) => {
                    let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
                    setFormData({...formData, difficulty: newDiff, points: defaultPoints});
                };
-               useEffect(() => { triggerMathRender(); }, [isPreviewMode]);
                
                const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), filterFolder, 'Utama'])];
 
