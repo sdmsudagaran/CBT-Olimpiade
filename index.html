@@ -223,7 +223,7 @@
                         delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}, {left: '\\[', right: '\\]', display: true}],
                         throwOnError : false
                     });
-                }, 10);
+                }, 10); // Ubah ke 10ms agar dirender super cepat tanpa berkedip
             }
         };
         const calculateScore = (answers, questions) => {
@@ -1885,6 +1885,11 @@
             const [showPreview, setShowPreview] = useState(true);
             const [isPreviewMode, setIsPreviewMode] = useState(false); // Dipindah ke sini agar aman dari blank
             const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
+              // Pindahkan state ke level teratas agar React tidak Crash (Blank)
+            const [isPreviewMode, setIsPreviewMode] = useState(false);
+            
+            // Pemicu render rumus otomatis tiap kali ganti halaman atau masuk mode preview
+            useEffect(() => { triggerMathRender(); }, [view, isPreviewMode]);
 
             // Memicu render rumus otomatis tiap ganti tampilan
             useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
@@ -2009,7 +2014,7 @@
             };
 
             if (view === 'create' || view === 'edit') {
-               const handleDifficultyChange = (newDiff) => {
+               // useState(false) DIHAPUS DARI SINI KARENA SUDAH DIPINDAH KE ATAS
                    let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
                    setFormData({...formData, difficulty: newDiff, points: defaultPoints});
                };
