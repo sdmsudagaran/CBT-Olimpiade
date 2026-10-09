@@ -223,7 +223,7 @@
                         delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}, {left: '\\[', right: '\\]', display: true}],
                         throwOnError : false
                     });
-                }, 10); // Ubah ke 10ms agar dirender super cepat tanpa berkedip
+                }, 10);
             }
         };
         const calculateScore = (answers, questions) => {
@@ -2018,8 +2018,12 @@
             };
 
             if (view === 'create' || view === 'edit') {
+               const handleDifficultyChange = (newDiff) => {
+                   let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
+                   setFormData({...formData, difficulty: newDiff, points: defaultPoints});
+               };
+               
                const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), filterFolder, 'Utama'])];
-
                return (
                  <AdminLayout title="Editor Soal Kelas Olimpiade">
                     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 max-w-4xl mx-auto mb-10 animate-fade-in flex flex-col overflow-hidden">
