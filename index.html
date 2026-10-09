@@ -1905,11 +1905,6 @@
             const handleDifficultyChange = (newDiff) => {
                 let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
                 setFormData({...formData, difficulty: newDiff, points: defaultPoints});
-            };  
-
-            const handleDifficultyChange = (newDiff) => {
-                let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
-                setFormData({...formData, difficulty: newDiff, points: defaultPoints});
             };
 
             const saveQuestion = async (e) => {
