@@ -2425,60 +2425,30 @@
              let processedResults = [...results].sort(compareResults);
              return (
                 <AdminLayout title="Cetak Laporan">
-                   <div className="mb-8 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center print:hidden">
-                      <div className="text-slate-500 font-bold text-sm">Pratinjau Laporan Peringkat Kelas Olimpiade</div>
-                      <button onClick={() => window.print()} className="bg-primary hover:bg-primary-700 text-white px-6 py-3 rounded-xl font-black text-sm flex items-center shadow-lg transition-all"><i className="fas fa-print mr-2"></i> Cetak (A4)</button>
-                   </div>
-                   
-                   <div className="bg-white border shadow-xl mx-auto w-full max-w-[21cm] min-h-[29.7cm] p-10 sm:p-16 print-container">
-                      <div className="text-center border-b-4 border-slate-800 pb-6 mb-8">
-                         <h1 className="text-2xl font-black uppercase tracking-widest text-slate-900 mb-2">Laporan Hasil Seleksi Olimpiade</h1>
-                         <p className="text-slate-600 font-bold text-lg">{organizerName}</p>
-                      </div>
-                      
-                      <table className="w-full text-left border-collapse text-sm">
-                         <thead className="bg-slate-100 uppercase font-black text-xs text-slate-700 tracking-widest"><tr className="border-y-2 border-slate-800">
-                            <th className="py-4 px-4 text-center w-16">Rank</th>
-                            <th className="py-4 px-4">Nama Peserta</th>
-                            <th className="py-4 px-4">Asal Sekolah</th>
-                            <th className="py-4 px-4 text-center w-24">ITO</th>
-                            <th className="py-4 px-4 text-center w-24">Skor</th>
-                         </tr></thead>
-                         <tbody>
-                            {processedResults.map((r, i) => (
-                               <tr key={i} className="border-b border-slate-200 font-bold">
-                                  <td className="py-3 px-4 text-center text-slate-500">{i+1}</td>
-                                  <td className="py-3 px-4 uppercase text-slate-900">{r.participant?.name}</td>
-                                  <td className="py-3 px-4 text-slate-600">{r.participant?.school}</td>
-                                  <td className="py-3 px-4 text-center text-primary">{r.detail?.summary?.ito || 0}</td>
-                                  <td className="py-3 px-4 text-center text-success text-base">{r.score}</td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                      <div className="mt-20 flex justify-end text-center text-slate-800 font-bold text-sm"><div><p className="mb-24">Mengetahui,<br/>Koordinator Olimpiade</p><p className="font-black uppercase tracking-widest border-t-2 border-slate-800 pt-2 w-48 mx-auto">Administrator</p></div></div>
-                   </div>
+                   {/* ... isi AdminReports ... */}
                 </AdminLayout>
              );
-          };
+          }; // <-- PENUTUP AdminReports
 
-          return (
-            <DialogContext.Provider value={{ showPrompt: showCustomPrompt, showAlert: showCustomAlert, showConfirm: showCustomConfirm }}>
+          // <-- TIDAK BOLEH ADA }; DI SINI
+
+          return ( // <-- INI ADALAH RETURN DARI KOMPONEN APP UTAMA
+            <DialogContext.Provider showAlert: showConfirm: showCustomAlert, showCustomConfirm showCustomPrompt, showPrompt: value="{{" }}>
                 {(() => {
                     switch (currentRoute) {
-                        case '/': case '/login': return <ParticipantLogin />;
-                        case '/instruction': return <ParticipantInstruction />;
-                        case '/exam': return <ExamEngine />;
-                        case '/review': return <ExamReview />;
-                        case '/dashboard': return <StudentDashboard />;
-                        case '/admin': case '/admin/login': return <AdminLogin />;
-                        case '/admin/dashboard': return <AdminDashboard />;
-                        case '/admin/tokens': return <AdminTokens />;
-                        case '/admin/results': return <AdminResults />;
-                        case '/admin/questions': return <AdminQuestions />;
-                        case '/admin/analysis': return <AdminItemAnalysis />;
-                        case '/admin/reports': return <AdminReports />;
-                        default: return <ParticipantLogin />;
+                        case '/': case '/login': return <ParticipantLogin/>;
+                        case '/instruction': return <ParticipantInstruction/>;
+                        case '/exam': return <ExamEngine/>;
+                        case '/review': return <ExamReview/>;
+                        case '/dashboard': return <StudentDashboard/>;
+                        case '/admin': case '/admin/login': return <AdminLogin/>;
+                        case '/admin/dashboard': return <AdminDashboard/>;
+                        case '/admin/tokens': return <AdminTokens/>;
+                        case '/admin/results': return <AdminResults/>;
+                        case '/admin/questions': return <AdminQuestions/>;
+                        case '/admin/analysis': return <AdminItemAnalysis/>;
+                        case '/admin/reports': return <AdminReports/>;
+                        default: return <ParticipantLogin/>;
                     }
                 })()}
 
@@ -2486,16 +2456,7 @@
                 {dialogState && (
                     <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8 max-w-sm w-full animate-fade-in">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${dialogState.type === 'alert' ? 'bg-primary/10 text-primary' : dialogState.type === 'confirm' ? 'bg-secondary/10 text-secondary' : 'bg-success/10 text-success'}`}>
-                                <i className={`fas ${dialogState.type === 'alert' ? 'fa-info' : dialogState.type === 'confirm' ? 'fa-question' : 'fa-keyboard'} text-xl`}></i>
-                            </div>
-                            <h3 className="font-black text-xl text-slate-800 mb-2">{dialogState.type === 'alert' ? 'Informasi' : dialogState.type === 'confirm' ? 'Konfirmasi' : 'Input Dibutuhkan'}</h3>
-                            <p className="text-slate-600 font-medium mb-6">{dialogState.msg}</p>
-                            
-                            {dialogState.type === 'prompt' && (
-                                <input type="text" id="prompt-global-input" defaultValue={dialogState.defaultValue} className="w-full p-4 border-2 border-slate-200 rounded-xl mb-6 focus:border-success focus:ring-4 focus:ring-success/10 outline-none font-bold text-slate-800 transition-all" autoFocus onKeyDown={(e) => { if(e.key === 'Enter') dialogState.resolve(e.target.value); }} />
-                            )}
-                            
+                            {/* ... isi dialog ... */}
                             <div className="flex justify-end gap-3">
                                 {dialogState.type !== 'alert' && (
                                     <button onClick={() => dialogState.resolve(null)} className="px-5 py-3 font-bold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Batal</button>
@@ -2513,9 +2474,9 @@
                 )}
             </DialogContext.Provider>
           );
-        }
+        } // <-- PENUTUP FUNGSI APP UTAMA
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     </script>
 </body>
 </html>
