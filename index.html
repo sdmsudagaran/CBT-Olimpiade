@@ -1902,11 +1902,7 @@
             const defaultESSAY = { id: '', type: 'ESSAY', folder: filterFolder, difficulty: 'Sulit', points: 1.5, question: '', correctAnswer: '' };
 
             const [formData, setFormData] = useState(defaultMCQ);
-            const handleDifficultyChange = (newDiff) => {
-                let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
-                setFormData({...formData, difficulty: newDiff, points: defaultPoints});
-            };
-
+            
             const saveQuestion = async (e) => {
                e.preventDefault(); setIsSaving(true);
                try {
