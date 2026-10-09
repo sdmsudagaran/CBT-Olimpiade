@@ -1879,29 +1879,33 @@
           };
 
           const AdminQuestions = () => {
+            // 1. SEMUA HOOKS HARUS BERADA DI POSISI TERATAS (TIDAK BOLEH DI DALAM IF)
             const [isSaving, setIsSaving] = useState(false);
             const [view, setViewLocal] = useState(window.savedAdminView || 'folders'); 
             const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
+            
+            // State baru untuk fitur Preview
             const [showPreview, setShowPreview] = useState(true);
-            const [isPreviewMode, setIsPreviewMode] = useState(false); // Dipindah ke sini agar aman dari blank
-            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
-              // Pindahkan state ke level teratas agar React tidak Crash (Blank)
             const [isPreviewMode, setIsPreviewMode] = useState(false);
             
-            // Pemicu render rumus otomatis tiap kali ganti halaman atau masuk mode preview
-            useEffect(() => { triggerMathRender(); }, [view, isPreviewMode]);
+            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
 
-            // Memicu render rumus otomatis tiap ganti tampilan
+            // Pemicu render rumus otomatis tiap ganti tampilan
             useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
 
             const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
             const setFilterFolder = (f) => { window.savedAdminFolder = f; setFilterFolderLocal(f); };
 
-            const defaultMCQ = { id: '', type: 'MCQ', folder: filterFolder, difficulty: 'Sedang', points: 1, question: '', options: [{id:'A', text:''}, {id:'B', text:''}, {id:'C', text:''}, {id:'D', text:''}], correctAnswer: 'A' };
+            const defaultMCQ = { id: '', type: 'MCQ', folder: filterFolder, difficulty: 'Sedang', points: 1.25, question: '', options: [{id:'A', text:''}, {id:'B', text:''}, {id:'C', text:''}, {id:'D', text:''}], correctAnswer: 'A' };
             const defaultSHORT = { id: '', type: 'SHORT_ANSWER', folder: filterFolder, difficulty: 'Sedang', points: 1.25, question: '', correctAnswer: '' };
             const defaultESSAY = { id: '', type: 'ESSAY', folder: filterFolder, difficulty: 'Sulit', points: 1.5, question: '', correctAnswer: '' };
 
             const [formData, setFormData] = useState(defaultMCQ);
+
+            const handleDifficultyChange = (newDiff) => {
+                let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
+                setFormData({...formData, difficulty: newDiff, points: defaultPoints});
+            };
 
             const saveQuestion = async (e) => {
                e.preventDefault(); setIsSaving(true);
@@ -1912,7 +1916,7 @@
                      type: formData.type, 
                      folder: formData.folder || filterFolder, 
                      difficulty: formData.difficulty, 
-                     points: formData.points,
+                     points: formData.points !== undefined ? formData.points : 1,
                      question: formData.question 
                  };
 
@@ -1925,13 +1929,13 @@
                  if(!formData.id) await db.from('questions').insert([payload]);
                  else await db.from('questions').update(payload).eq('id', payload.id);
                  
-                 setView('list'); await fetchSupabaseData(); 
-               } catch (err) { alert("Gagal menyimpan. Pastikan Kolom 'points' sudah ditambahkan di tabel 'questions' via SQL Editor."); } 
+                 setView('list'); setIsPreviewMode(false); await fetchSupabaseData(); 
+               } catch (err) { await showAlert("Gagal menyimpan soal. Pastikan database stabil."); } 
                finally { setIsSaving(false); }
             };
 
             const deleteQuestion = async (id) => {
-                const isConfirmed = await showConfirm("Yakin ingin menghapus soal ini?");
+                const isConfirmed = await showConfirm("Yakin ingin menghapus soal ini secara permanen?");
                 if(!isConfirmed) return;
                 try { const db = await getSupabase(); await db.from('questions').delete().eq('id', id); setView('list'); await fetchSupabaseData(); } catch(e) { }
             };
@@ -1991,9 +1995,9 @@
                     setIsSaving(false);
                 }
             };
-            
+
             const deleteFolder = async (fname) => {
-                if (fname === 'Utama') { alert("Folder Utama tidak dapat dihapus."); return; }
+                if (fname === 'Utama') { await showAlert("Folder Utama tidak dapat dihapus."); return; }
                 const isConfirmed = await showConfirm(`Hapus folder "${fname}" beserta seluruh soal di dalamnya secara permanen?`);
                 if (!isConfirmed) return;
                 setIsSaving(true);
@@ -2003,7 +2007,7 @@
                     if (folderToken) await db.from('tokens').delete().eq('code', folderToken.code); 
                     await db.from('questions').delete().eq('folder', fname);
                     
-                    if (activeFolder.includes(fname)) { 
+                    if (activeFolder && activeFolder.includes(fname)) { 
                         const updatedActive = activeFolder.split(',').map(x=>x.trim()).filter(x=>x!==fname).join(', ') || 'Utama';
                         await db.from('tokens').update({ status: updatedActive }).eq('code', 'SYS_SETTING_FOLDER'); 
                         setActiveFolder(updatedActive); 
@@ -2014,11 +2018,6 @@
             };
 
             if (view === 'create' || view === 'edit') {
-               // useState(false) DIHAPUS DARI SINI KARENA SUDAH DIPINDAH KE ATAS
-                   let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
-                   setFormData({...formData, difficulty: newDiff, points: defaultPoints});
-               };
-               
                const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), filterFolder, 'Utama'])];
 
                return (
@@ -2026,7 +2025,7 @@
                     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 max-w-4xl mx-auto mb-10 animate-fade-in flex flex-col overflow-hidden">
                         <div className="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center">
                             <h2 className="font-black text-slate-800 text-lg">{formData.id ? 'Edit Soal' : 'Soal Baru'}</h2>
-                            <button onClick={() => setIsPreviewMode(!isPreviewMode)} className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${isPreviewMode ? 'bg-secondary text-white shadow-secondary/30' : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => setIsPreviewMode(!isPreviewMode)} className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${isPreviewMode ? 'bg-secondary text-white shadow-secondary/30' : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'}`}>
                                 <i className={`fas ${isPreviewMode ? 'fa-edit' : 'fa-eye'} mr-2`}></i> {isPreviewMode ? 'Kembali Edit' : 'Mode Preview'}
                             </button>
                         </div>
@@ -2123,7 +2122,6 @@
                                             <h3 className="font-black text-slate-800 border-b-2 border-slate-100 pb-2">Kunci Jawaban Singkat</h3>
                                             <div className="bg-success/10 p-6 rounded-2xl border border-success/20">
                                                 <input type="text" value={formData.correctAnswer || ''} onChange={e => setFormData({...formData, correctAnswer: e.target.value})} className="w-full p-4 border-2 border-success rounded-xl font-bold text-success-800 bg-white outline-none" placeholder="Masukkan jawaban persis (angka atau teks pendek)" />
-                                                <p className="mt-3 text-xs font-bold text-success-700">Catatan: Sistem tidak membedakan huruf besar/kecil (case-insensitive).</p>
                                             </div>
                                         </div>
                                     )}
@@ -2132,17 +2130,18 @@
                                         <div className="space-y-6">
                                             <h3 className="font-black text-slate-800 border-b-2 border-slate-100 pb-2">Rubrik Penilaian / Kunci</h3>
                                             <div className="bg-secondary/10 p-6 rounded-2xl border border-secondary/20">
-                                                <RichTextEditor minHeight="120px" value={formData.correctAnswer || ''} onChange={val => setFormData({...formData, correctAnswer: val})} placeholder="Masukkan kriteria penilaian, langkah-langkah, atau contoh jawaban benar..." />
-                                                <p className="mt-3 text-xs font-bold text-secondary-700">Catatan: Soal uraian dinilai secara manual oleh admin setelah ujian selesai.</p>
+                                                <RichTextEditor minHeight="120px" value={formData.correctAnswer || ''} onChange={val => setFormData({...formData, correctAnswer: val})} placeholder="Masukkan kriteria penilaian..." />
                                             </div>
                                         </div>
                                     )}
+                                    
+                                    {/* TOMBOL SAVE DISATUKAN KE DALAM FORM AGAR SUBMIT BERJALAN */}
+                                    <div className="flex justify-end gap-4 pt-8 mt-8 border-t border-slate-100">
+                                        <button type="button" onClick={() => { setView('list'); setIsPreviewMode(false); }} className="px-8 py-4 bg-white border-2 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>
+                                        <button type="submit" disabled={isSaving || isPreviewMode} className="px-10 py-4 bg-primary text-white rounded-xl font-black shadow-lg hover:bg-primary-700 disabled:opacity-50 transition-all">{isSaving ? 'Menyimpan...' : 'Simpan Soal'}</button>
+                                    </div>
                                 </form>
                             )}
-                        </div>
-                        <div className="bg-slate-50 border-t border-slate-200 p-6 flex justify-end gap-4">
-                            <button type="button" onClick={() => { setView('list'); setIsPreviewMode(false); }} className="px-8 py-4 bg-white border-2 border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>
-                            <button type="button" onClick={saveQuestion} disabled={isSaving || isPreviewMode} className="px-10 py-4 bg-primary text-white rounded-xl font-black shadow-lg hover:bg-primary-700 disabled:opacity-50 transition-all">{isSaving ? 'Menyimpan...' : 'Simpan Soal'}</button>
                         </div>
                     </div>
                  </AdminLayout>
@@ -2217,6 +2216,36 @@
                 </AdminLayout>
               );
             }
+
+            return (
+              <AdminLayout title="Manajemen Bank Soal">
+                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 animate-fade-in">
+                    <div onClick={createFolder} className="bg-primary/5 border-2 border-dashed border-primary/30 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer min-h-[160px] hover:bg-primary/10 transition-colors">
+                        <div className="w-12 h-12 bg-primary/20 text-primary rounded-xl flex items-center justify-center mb-3"><Plus size={24}/></div>
+                        <span className="font-black text-sm text-primary text-center">Buat Folder Baru</span>
+                    </div>
+                    {Object.entries(folderStats).map(([fname, count]) => {
+                        const isPublished = activeFolder && activeFolder.split(',').map(f=>f.trim().toLowerCase()).includes(fname.toLowerCase());
+                        return (
+                        <div key={fname} className={`bg-white border-2 rounded-2xl p-5 md:p-6 flex flex-col justify-between shadow-sm min-h-[160px] relative overflow-hidden transition-all ${isPublished ? 'border-primary ring-2 ring-primary/10' : 'border-slate-100 hover:border-slate-300'}`}>
+                            {isPublished && <div className="absolute top-0 right-0 bg-primary text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-lg">Aktif</div>}
+                            <div>
+                                <h4 className="font-black text-lg text-slate-800 mb-1.5 line-clamp-2" title={fname}>{fname}</h4>
+                                <p className="text-xs text-slate-500 font-bold bg-slate-100 inline-block px-3 py-1 rounded-lg border border-slate-200">{count} Butir Soal</p>
+                            </div>
+                            <div className="mt-4 flex flex-col gap-2">
+                                <div className="flex gap-1.5">
+                                    <button onClick={() => { setFilterFolder(fname); setView('list'); }} className="flex-1 bg-slate-100 py-2 rounded-lg text-xs font-black text-slate-700 hover:bg-slate-200 transition-colors">Buka Soal</button>
+                                    <button onClick={() => editFolder(fname)} className="px-3 bg-secondary/10 text-secondary-700 rounded-lg hover:bg-secondary/20 transition-colors" title="Edit Nama Folder"><Edit size={14}/></button>
+                                    {fname !== 'Utama' && <button onClick={() => deleteFolder(fname)} className="px-3 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors" title="Hapus Folder Permanen"><Trash2 size={14}/></button>}
+                                </div>
+                            </div>
+                        </div>
+                    )})}
+                 </div>
+              </AdminLayout>
+            );
+          };
 
             return (
               <AdminLayout title="Manajemen Bank Soal">
