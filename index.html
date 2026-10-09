@@ -2463,10 +2463,10 @@
           };
 
           return (
-            <DialogContext.Provider value={{ showPrompt: showCustomPrompt, showAlert: showCustomAlert, showConfirm: showCustomConfirm }}>
-                {(() => {
-                    switch (currentRoute) {
-                        case '/': case '/login': return <ParticipantLogin />;
+         <DialogContext.Provider value={{ showPrompt: showCustomPrompt, showAlert: showCustomAlert, showConfirm: showCustomConfirm }}>
+             {(() => {
+                 switch (currentRoute) {
+                     case '/': case '/login': return <ParticipantLogin />;
                         case '/instruction': return <ParticipantInstruction />;
                         case '/exam': return <ExamEngine />;
                         case '/review': return <ExamReview />;
