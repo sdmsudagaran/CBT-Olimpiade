@@ -1879,28 +1879,33 @@
           };
 
           const AdminQuestions = () => {
-            // 1. SEMUA HOOKS HARUS BERADA DI POSISI TERATAS (TIDAK BOLEH DI DALAM IF)
-            const [isSaving, setIsSaving] = useState(false);
-            const [view, setViewLocal] = useState(window.savedAdminView || 'folders'); 
-            const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
-            
-            // State baru untuk fitur Preview
-            const [showPreview, setShowPreview] = useState(true);
-            const [isPreviewMode, setIsPreviewMode] = useState(false);
-            
-            const { showPrompt, showConfirm, showAlert } = useContext(DialogContext);
+          const [isSaving, setIsSaving] = useState(false);
+          const [view, setViewLocal] = useState(window.savedAdminView || 'folders');
+          const [filterFolder, setFilterFolderLocal] = useState(window.savedAdminFolder || 'Utama');
 
-            // Pemicu render rumus otomatis tiap ganti tampilan
-            useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
+          // KEMBALIKAN VARIABEL IMPORT YANG HILANG (Penyebab Blank)
+          const [showImport, setShowImport] = useState(false);
+          const [fileError, setFileError] = useState('');
 
-            const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
-            const setFilterFolder = (f) => { window.savedAdminFolder = f; setFilterFolderLocal(f); };
+          // STATE PREVIEW (Pindah ke atas agar aman)
+          const [showPreview, setShowPreview] = useState(true);
+          const [isPreviewMode, setIsPreviewMode] = useState(false);
+
+          // Pemicu render rumus otomatis (DialogContext dihapus karena menyebabkan crash di file asli)
+          useEffect(() => { triggerMathRender(); }, [view, showPreview, isPreviewMode, filterFolder, questions]);
+
+          const setView = (v) => { window.savedAdminView = v; setViewLocal(v); };
+          const setFilterFolder = (f) => { window.savedAdminFolder = f; setFilterFolderLocal(f); };
 
             const defaultMCQ = { id: '', type: 'MCQ', folder: filterFolder, difficulty: 'Sedang', points: 1.25, question: '', options: [{id:'A', text:''}, {id:'B', text:''}, {id:'C', text:''}, {id:'D', text:''}], correctAnswer: 'A' };
             const defaultSHORT = { id: '', type: 'SHORT_ANSWER', folder: filterFolder, difficulty: 'Sedang', points: 1.25, question: '', correctAnswer: '' };
             const defaultESSAY = { id: '', type: 'ESSAY', folder: filterFolder, difficulty: 'Sulit', points: 1.5, question: '', correctAnswer: '' };
 
             const [formData, setFormData] = useState(defaultMCQ);
+            const handleDifficultyChange = (newDiff) => {
+                let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
+                setFormData({...formData, difficulty: newDiff, points: defaultPoints});
+            };  
 
             const handleDifficultyChange = (newDiff) => {
                 let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
@@ -2018,11 +2023,6 @@
             };
 
             if (view === 'create' || view === 'edit') {
-               const handleDifficultyChange = (newDiff) => {
-                   let defaultPoints = newDiff === 'Mudah' ? 1.00 : newDiff === 'Sedang' ? 1.25 : 1.50;
-                   setFormData({...formData, difficulty: newDiff, points: defaultPoints});
-               };
-               
                const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama'), ...tokens.filter(t => t.code && t.code.startsWith('SYS_FOLDER_')).map(t => t.status), filterFolder, 'Utama'])];
                return (
                  <AdminLayout title="Editor Soal Kelas Olimpiade">
