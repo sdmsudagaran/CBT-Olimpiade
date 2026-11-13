@@ -273,9 +273,18 @@
             const masterySulit = totalSulit > 0 ? (correctSulit / totalSulit) * 100 : 0;
 
             const ito = (0.50 * masterySulit) + (0.30 * masterySedang) + (0.20 * masteryMudah);
+            // Kalkulasi Total Poin Maksimal Keseluruhan Soal Ujian
+            const maxPossiblePoints = questions.reduce((sum, q) => {
+                const qPoints = (q.points !== undefined && q.points !== null) ? parseFloat(q.points) : 4;
+                return sum + qPoints;
+            }, 0);
+
+            // Konversi ke Skala 100
+            const calculatedScale100 = maxPossiblePoints > 0 ? (totalPoints / maxPossiblePoints) * 100 : 0;
+            const boundedScale100 = Math.max(0, Math.min(100, calculatedScale100));
 
             return { 
-                finalScore: Number(totalPoints.toFixed(2)), ito: Number(ito.toFixed(2)),
+                finalScore: Number(boundedScale100.toFixed(2)), ito: Number(ito.toFixed(2)),
                 correctMudah, correctSedang, correctSulit, totalMudah, totalSedang, totalSulit,
                 masteryMudah, masterySedang, masterySulit, detailedResults 
             };
@@ -1865,7 +1874,7 @@
                                     <td className="p-4 font-medium text-slate-600">{r.participant?.school}</td>
                                     <td className="p-4 text-center font-bold text-blue-600 text-xs tracking-wider uppercase">{folderName}</td>
                                     <td className="p-4 text-center"><div className="font-bold text-slate-700">{earned} <span className="text-xs text-slate-400 font-normal">/ {maxP}</span></div></td>
-                                    <td className="p-4 text-center font-black text-emerald-600 text-lg">{r.score}</td>
+                                    <td className="p-4 text-center font-black text-emerald-600 text-lg">{maxP > 0 ? Math.max(0, Math.min(100, (earned / maxP) * 100)).toFixed(2) : 0}</td>
                                     <td className="p-4 text-center"><button onClick={() => setSelectedAnalysis(r)} className="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-sm">Lihat Detail</button></td>
                                 </tr>
                             )})}
@@ -2351,7 +2360,7 @@
                                   <td className="py-3 px-4 uppercase text-slate-900">{r.participant?.name}</td>
                                   <td className="py-3 px-4 text-slate-600">{r.participant?.school}</td>
                                   <td className="py-3 px-4 text-center text-primary">{r.detail?.summary?.ito || 0}</td>
-                                  <td className="py-3 px-4 text-center text-success text-base">{r.score}</td>
+                                  <td className="py-3 px-4 text-center text-success text-base">{finalScale100}</td>
                                </tr>
                             ))}
                          </tbody>
