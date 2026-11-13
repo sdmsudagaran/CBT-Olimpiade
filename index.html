@@ -1866,6 +1866,10 @@
                                 const earned = details.reduce((sum, d) => sum + (d.pointsEarned || 0), 0);
                                 const maxP = details.reduce((sum, d) => sum + (d.questionMaxPoints || 0), 0);
                                 const folderName = getResultFolder(r);
+                                
+                                // Kalkulasi paksa skala 100 di frontend
+                                const finalGrade = maxP > 0 ? parseFloat(((earned / maxP) * 100).toFixed(2)) : 0;
+
                                 return (
                                 <tr key={r.id} className={`border-b transition-colors ${selectedResults.includes(r.id) ? 'bg-blue-50/40' : 'hover:bg-slate-50'}`}>
                                     <td className="p-4 text-center"><input type="checkbox" className="w-4 h-4 cursor-pointer accent-blue-600 rounded" checked={selectedResults.includes(r.id)} onChange={() => handleSelectResult(r.id)} /></td>
@@ -1874,8 +1878,14 @@
                                     <td className="p-4 font-medium text-slate-600">{r.participant?.school}</td>
                                     <td className="p-4 text-center font-bold text-blue-600 text-xs tracking-wider uppercase">{folderName}</td>
                                     <td className="p-4 text-center"><div className="font-bold text-slate-700">{earned} <span className="text-xs text-slate-400 font-normal">/ {maxP}</span></div></td>
-                                    <td className="p-4 text-center font-black text-emerald-600 text-lg">{maxP > 0 ? Math.max(0, Math.min(100, (earned / maxP) * 100)).toFixed(2) : 0}</td>
-                                    <td className="p-4 text-center"><button onClick={() => setSelectedAnalysis(r)} className="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-sm">Lihat Detail</button></td>
+                                    <td className="p-4 text-center font-black text-emerald-600 text-lg">{finalGrade}</td>
+                                    <td className="p-4 flex justify-center gap-2">
+                                        <button onClick={() => setSelectedAnalysis(r)} className="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-sm" title="Lihat Detail UI"><Eye size={14} /></button>
+                                        <button onClick={() => {
+                                            setSelectedAnalysis(r);
+                                            setTimeout(() => { document.getElementById('btn-hidden-print-pdf')?.click(); }, 100);
+                                        }} className="text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm" title="Unduh PDF"><i className="fas fa-file-pdf"></i></button>
+                                    </td>
                                 </tr>
                             )})}
                             {processedResults.length === 0 && <tr><td colSpan="8" className="text-center p-8 text-slate-500 font-bold bg-slate-50">Belum ada data hasil ujian yang masuk.</td></tr>}
@@ -2331,11 +2341,71 @@
           };
 
           const AdminReports = () => {
-             let processedResults = [...results].sort(compareResults);
+             const [filterFolder, setFilterFolder] = useState('Semua');
+             const [filterKategori, setFilterKategori] = useState('Semua Kategori');
+             const [sortOrder, setSortOrder] = useState('SCORE_DESC');
+             
+             const getResultFolder = (r) => {
+                 const firstQId = r.detail?.detailedResults?.find(x => x.qId !== 'SYS_CHEATS')?.qId;
+                 return firstQId ? (questions.find(x => x.id === firstQId)?.folder || 'Utama') : 'Utama';
+             };
+             
+             const availableFolders = [...new Set([...questions.map(q => q.folder || 'Utama')])];
+
+             let processedResults = results.filter(r => {
+                 const matchFolder = filterFolder === 'Semua' || getResultFolder(r) === filterFolder;
+                 let matchKategori = true;
+                 if (filterKategori !== 'Semua Kategori') {
+                     const txt = `${r.participant?.school || ''} ${getResultFolder(r) || ''}`.toUpperCase();
+                     if (filterKategori === 'SD/MI') matchKategori = /\b(SD|SDN|MI|MIS|MIM)\b/.test(txt);
+                     else if (filterKategori === 'SMP/MTS') matchKategori = /\b(SMP|SMPN|MTS|MTsN)\b/.test(txt);
+                     else if (filterKategori === 'SMA/SMK/MA') matchKategori = /\b(SMA|SMAN|SMK|SMKN|MA|MAN)\b/.test(txt);
+                 }
+                 return matchFolder && matchKategori;
+             }).sort((a, b) => {
+                 // Konversi nilai ke skala 100 agar fitur pengurutan (Sorting) Ranking berjalan akurat
+                 const detailsA = Array.isArray(a.detail?.detailedResults) ? a.detail.detailedResults : [];
+                 const earnedA = detailsA.reduce((sum, d) => sum + (d.pointsEarned || 0), 0);
+                 const maxPA = detailsA.reduce((sum, d) => sum + (d.questionMaxPoints || 0), 0);
+                 const gradeA = maxPA > 0 ? (earnedA / maxPA) * 100 : 0;
+
+                 const detailsB = Array.isArray(b.detail?.detailedResults) ? b.detail.detailedResults : [];
+                 const earnedB = detailsB.reduce((sum, d) => sum + (d.pointsEarned || 0), 0);
+                 const maxPB = detailsB.reduce((sum, d) => sum + (d.questionMaxPoints || 0), 0);
+                 const gradeB = maxPB > 0 ? (earnedB / maxPB) * 100 : 0;
+
+                 const timeA = (a.endTime || 0) - (a.startTime || 0);
+                 const timeB = (b.endTime || 0) - (b.startTime || 0);
+                 
+                 if (sortOrder === 'SCORE_DESC') {
+                     if (gradeB !== gradeA) return gradeB - gradeA;
+                     return timeA - timeB; // Waktu tercepat (angka kecil) ditaruh di atas jika skor seri
+                 } else if (sortOrder === 'SCORE_ASC') {
+                     if (gradeA !== gradeB) return gradeA - gradeB;
+                     return timeA - timeB;
+                 } else if (sortOrder === 'NAME_ASC') {
+                     return (a.participant?.name || '').localeCompare(b.participant?.name || '');
+                 }
+                 return 0;
+             });
+             
              return (
                 <AdminLayout title="Cetak Laporan">
                    <div className="mb-8 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center print:hidden">
-                      <div className="text-slate-500 font-bold text-sm">Pratinjau Laporan Peringkat Kelas Olimpiade</div>
+                      <div className="flex flex-wrap gap-3 items-center">
+                          <div className="text-slate-500 font-bold text-sm mr-2 hidden sm:block">Pratinjau Laporan</div>
+                          <select value={sortOrder} onChange={e=>setSortOrder(e.target.value)} className="border border-slate-300 rounded-lg p-2 text-sm font-black text-slate-700 bg-slate-50 outline-none cursor-pointer shadow-sm">
+                              <option value="SCORE_DESC">Ranking Tertinggi</option>
+                              <option value="SCORE_ASC">Ranking Terendah</option>
+                              <option value="NAME_ASC">Nama Siswa A - Z</option>
+                          </select>
+                          <select value={filterKategori} onChange={e=>setFilterKategori(e.target.value)} className="border border-slate-300 rounded-lg p-2 text-sm font-bold text-rose-700 outline-none cursor-pointer">
+                              <option value="Semua Kategori">Semua Jenjang</option><option value="SD/MI">SD/MI</option><option value="SMP/MTS">SMP/MTs</option><option value="SMA/SMK/MA">SMA/SMK/MA</option>
+                          </select>
+                          <select value={filterFolder} onChange={e=>setFilterFolder(e.target.value)} className="border border-slate-300 rounded-lg p-2 text-sm font-bold text-blue-700 outline-none cursor-pointer">
+                              <option value="Semua">Semua Folder Soal</option>{availableFolders.map(f => <option key={f} value={f}>{f}</option>)}
+                          </select>
+                      </div>
                       <button onClick={() => window.print()} className="bg-primary hover:bg-primary-700 text-white px-6 py-3 rounded-xl font-black text-sm flex items-center shadow-lg transition-all"><i className="fas fa-print mr-2"></i> Cetak (A4)</button>
                    </div>
                    
@@ -2346,23 +2416,42 @@
                       </div>
                       
                       <table className="w-full text-left border-collapse text-sm">
-                         <thead className="bg-slate-100 uppercase font-black text-xs text-slate-700 tracking-widest"><tr className="border-y-2 border-slate-800">
-                            <th className="py-4 px-4 text-center w-16">Rank</th>
-                            <th className="py-4 px-4">Nama Peserta</th>
-                            <th className="py-4 px-4">Asal Sekolah</th>
-                            <th className="py-4 px-4 text-center w-24">ITO</th>
-                            <th className="py-4 px-4 text-center w-24">Skor</th>
-                         </tr></thead>
+                         <thead className="bg-slate-100 uppercase font-black text-xs text-slate-700 tracking-widest">
+                            <tr className="border-y-2 border-slate-800">
+                               <th className="py-4 px-4 text-center w-12">Rank</th>
+                               <th className="py-4 px-4">Nama Peserta</th>
+                               <th className="py-4 px-4">Asal Sekolah</th>
+                               <th className="py-4 px-4 text-center w-20">Pelanggaran</th>
+                               <th className="py-4 px-4 text-center w-24">Waktu</th>
+                               <th className="py-4 px-4 text-center w-24">Skor Akhir</th>
+                            </tr>
+                         </thead>
                          <tbody>
-                            {processedResults.map((r, i) => (
-                               <tr key={i} className="border-b border-slate-200 font-bold">
-                                  <td className="py-3 px-4 text-center text-slate-500">{i+1}</td>
-                                  <td className="py-3 px-4 uppercase text-slate-900">{r.participant?.name}</td>
-                                  <td className="py-3 px-4 text-slate-600">{r.participant?.school}</td>
-                                  <td className="py-3 px-4 text-center text-primary">{r.detail?.summary?.ito || 0}</td>
-                                  <td className="py-3 px-4 text-center text-success text-base">{finalScale100}</td>
-                               </tr>
-                            ))}
+                            {processedResults.map((r, i) => {
+                               const cheatCount = r.detail?.detailedResults?.find(x => x.qId === 'SYS_CHEATS')?.cheatCount || 0;
+                               const details = Array.isArray(r.detail?.detailedResults) ? r.detail.detailedResults : [];
+                               const earned = details.reduce((sum, d) => sum + (d.pointsEarned || 0), 0);
+                               const maxP = details.reduce((sum, d) => sum + (d.questionMaxPoints || 0), 0);
+                               
+                               // Kalkulasi mutlak skala 100 di frontend agar data lama ikut berubah
+                               const finalGrade = maxP > 0 ? parseFloat(((earned / maxP) * 100).toFixed(2)) : 0;
+                               
+                               const durationMs = (r.endTime || 0) - (r.startTime || 0);
+                               const minutes = Math.floor(durationMs / 60000);
+                               const seconds = ((durationMs % 60000) / 1000).toFixed(0);
+                               const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                               
+                               return (
+                                  <tr key={i} className="border-b border-slate-200 font-bold">
+                                     <td className="py-3 px-4 text-center text-slate-500">{i+1}</td>
+                                     <td className="py-3 px-4 uppercase text-slate-900">{r.participant?.name}</td>
+                                     <td className="py-3 px-4 text-slate-600">{r.participant?.school}</td>
+                                     <td className="py-3 px-4 text-center text-rose-600">{cheatCount > 0 ? `${cheatCount}x` : '-'}</td>
+                                     <td className="py-3 px-4 text-center text-blue-600 font-medium">{timeStr}</td>
+                                     <td className="py-3 px-4 text-center text-success text-base">{finalGrade}</td>
+                                  </tr>
+                               );
+                            })}
                          </tbody>
                       </table>
                       <div className="mt-20 flex justify-end text-center text-slate-800 font-bold text-sm"><div><p className="mb-24">Mengetahui,<br/>Koordinator Olimpiade</p><p className="font-black uppercase tracking-widest border-t-2 border-slate-800 pt-2 w-48 mx-auto">Administrator</p></div></div>
